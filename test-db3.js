@@ -1,0 +1,17 @@
+const { createClient } = require('@supabase/supabase-js');
+
+const supabaseUrl = 'https://xsknwngfijacpzjdfohb.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhza253bmdmaWphY3B6amRmb2hiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4OTU0MzIsImV4cCI6MjA5NTQ3MTQzMn0.Zt9wDYpEkLq6eeMxY3Ne4edksi1G3QW_Lf9yG-mPbVA';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+async function test() {
+  const { data, error } = await supabase.from('product_channel_prices').insert([{
+    product_id: 1,
+    channel_id: 1,
+    price: 3500
+  }]).select();
+  console.log("Insert Data:", data);
+  console.log("Insert Error:", error);
+}
+
+test();
