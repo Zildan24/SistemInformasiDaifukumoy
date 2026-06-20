@@ -5,7 +5,7 @@ import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
 import { Package, Plus, History, TrendingUp, TrendingDown } from "lucide-react";
 import { format } from "date-fns";
-import { showSuccess, confirmAction } from "../utils/alert";
+import { showSuccess, confirmAction, showError } from "../utils/alert";
 
 export default function GlobalStockPage() {
   const { products, stocks, globalStockLogs, addGlobalStockLog } = useData();
@@ -14,6 +14,23 @@ export default function GlobalStockPage() {
   const [activeTab, setActiveTab] = useState<"stok" | "log">("stok");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addForm, setAddForm] = useState({ productId: "", quantity: 1, description: "Hasil Produksi Dapur" });
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+
+  const activeCategories = useMemo(() => {
+    return Array.from(
+      new Set(
+        products
+          .filter(p => p.isActive)
+          .map(p => p.category)
+          .filter(Boolean)
+      )
+    ) as string[];
+  }, [products]);
+
+  const filteredProductsByCategory = useMemo(() => {
+    if (!selectedCategory) return [];
+    return products.filter(p => p.isActive && p.category === selectedCategory);
+  }, [products, selectedCategory]);
 
   if (currentUser?.role !== "admin") {
     return <div className="p-6 text-center text-gray-500">Akses khusus Admin.</div>;
@@ -50,6 +67,7 @@ export default function GlobalStockPage() {
         showSuccess("Stok Ditambahkan!", "Stok Gudang Pusat berhasil diperbarui.");
         setIsAddModalOpen(false);
         setAddForm({ productId: "", quantity: 1, description: "Hasil Produksi Dapur" });
+        setSelectedCategory("");
       } catch (err: any) {
         showError("Gagal Menambah Stok", err.message);
       }
@@ -66,7 +84,10 @@ export default function GlobalStockPage() {
           <p className="text-gray-500 font-medium mt-1">Stok Siap Jual per Hari Ini: <span className="font-bold text-gray-800">{todayStr}</span></p>
         </div>
         <button 
-          onClick={() => setIsAddModalOpen(true)}
+          onClick={() => {
+            setIsAddModalOpen(true);
+            setSelectedCategory("");
+          }}
           className="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-xl font-bold shadow-md shadow-primary/20 flex items-center gap-2 transition-transform active:scale-95"
         >
           <Plus size={20} /> Tambah Produksi Dapur
@@ -188,15 +209,35 @@ export default function GlobalStockPage() {
             </div>
             <form onSubmit={handleAddStock} className="p-6 space-y-4">
               <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Kategori</label>
+                <select 
+                  value={selectedCategory}
+                  onChange={e => {
+                    setSelectedCategory(e.target.value);
+                    setAddForm({...addForm, productId: ""});
+                  }}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/50 outline-none text-sm font-medium capitalize"
+                >
+                  <option value="">-- Pilih Kategori --</option>
+                  {activeCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Produk</label>
                 <select 
                   required
+                  disabled={!selectedCategory}
                   value={addForm.productId}
                   onChange={e => setAddForm({...addForm, productId: e.target.value})}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/50 outline-none text-sm font-medium"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/50 outline-none text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="">-- Pilih Produk --</option>
-                  {products.filter(p => p.isActive).map(p => (
+                  <option value="">
+                    {selectedCategory ? "-- Pilih Produk --" : "-- Pilih Kategori Terlebih Dahulu --"}
+                  </option>
+                  {filteredProductsByCategory.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
@@ -223,7 +264,7 @@ export default function GlobalStockPage() {
                 />
               </div>
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition-colors">Batal</button>
+                <button type="button" onClick={() => { setIsAddModalOpen(false); setSelectedCategory(""); }} className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition-colors">Batal</button>
                 <button type="submit" className="flex-1 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 shadow-md shadow-primary/20 transition-transform active:scale-95">Simpan Stok</button>
               </div>
             </form>

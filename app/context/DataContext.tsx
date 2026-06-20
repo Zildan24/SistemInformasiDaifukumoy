@@ -54,8 +54,9 @@ export type PreOrder = {
   quantity: number;
   pickupDate: string;
   adminNotes?: string;
-  status: "pesanan diterima" | "sedang dibuat" | "siap diambil" | "selesai";
+  status: "menunggu pembayaran" | "pesanan diterima" | "sedang dibuat" | "siap diambil" | "selesai" | "gagal";
   createdAt: string;
+  snapToken?: string | null;
 };
 
 export type ProductionLog = { id: string; date: string; productId: string; morningProduction: number; soldQuantity: number; realWaste?: number; reusableWaste?: number; canal?: string; subLocation?: string; hppSnapshot?: number; priceSnapshot?: number; };
@@ -85,8 +86,8 @@ type DataContextType = {
   // Real Supabase methods
   addTransaction: (transaction: Omit<Transaction, "id">) => Promise<void>;
   updateStock: (stockId: string, newQuantity: number) => Promise<void>;
-  addPreOrder: (preOrder: Omit<PreOrder, "id" | "status" | "createdAt"> & { createdAt?: string }) => Promise<void>;
-  updatePreOrderStatus: (preOrderId: string, status: PreOrder["status"], adminNotes?: string) => Promise<void>;
+  addPreOrder: (preOrder: Omit<PreOrder, "id" | "status" | "createdAt" | "snapToken"> & { status?: PreOrder["status"], snapToken?: string, createdAt?: string }) => Promise<PreOrder | null>;
+  updatePreOrderStatus: (preOrderId: string, status: PreOrder["status"], adminNotes?: string, skipRefresh?: boolean) => Promise<void>;
   addProduct: (product: Omit<Product, "id">) => Promise<void>;
   updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
@@ -270,9 +271,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         setPreOrders(poData.map(po => {
           let localStatus: PreOrder["status"] = "pesanan diterima";
           const dbStatus = po.status.toLowerCase();
-          if (dbStatus === "sedang dibuat") localStatus = "sedang dibuat";
+          if (dbStatus === "menunggu pembayaran") localStatus = "menunggu pembayaran";
+          else if (dbStatus === "sedang dibuat") localStatus = "sedang dibuat";
           else if (dbStatus === "siap diambil") localStatus = "siap diambil";
           else if (dbStatus === "selesai") localStatus = "selesai";
+          else if (dbStatus === "gagal") localStatus = "gagal";
 
           return {
             id: po.id.toString(),
@@ -284,7 +287,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
             pickupDate: po.pickup_date || '',
             adminNotes: po.admin_notes || '',
             status: localStatus,
-            createdAt: po.created_at
+            createdAt: po.created_at,
+            snapToken: po.snap_token || null
           };
         }));
       } else if (poErr) {
@@ -533,15 +537,56 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const triggerProductionPlanAutomation = async (productId: number, pickupDate: string, quantity: number) => {
+    try {
+      const { data: channelData } = await supabase.from('channels').select('id').ilike('name', '%reseller%').single();
+      const resellerChannelId = channelData?.id;
+
+      if (resellerChannelId) {
+        const { data: existingPlan } = await supabase.from('production_plans')
+          .select('*')
+          .eq('target_date', pickupDate)
+          .eq('product_id', productId)
+          .eq('channel_id', resellerChannelId)
+          .single();
+
+        if (existingPlan) {
+          await supabase.from('production_plans')
+            .update({ target_production_qty: existingPlan.target_production_qty + quantity })
+            .eq('id', existingPlan.id);
+        } else {
+          await supabase.from('production_plans').insert([{
+            target_date: pickupDate,
+            product_id: productId,
+            channel_id: resellerChannelId,
+            target_production_qty: quantity,
+            avg_past_week_qty: 0,
+            is_finalized: false
+          }]);
+        }
+      }
+    } catch (err) {
+      console.error("Gagal update production_plans (Automasi 1):", err);
+    }
+  };
+
   // Pre Orders
-  const addPreOrder = async (po: Omit<PreOrder, "id" | "status" | "createdAt"> & { createdAt?: string }) => {
+  const addPreOrder = async (po: Omit<PreOrder, "id" | "status" | "createdAt" | "snapToken"> & { status?: PreOrder["status"], snapToken?: string, createdAt?: string }): Promise<PreOrder | null> => {
+    let dbStatus = 'Pesanan Diterima';
+    if (po.status === 'menunggu pembayaran') dbStatus = 'Menunggu Pembayaran';
+    else if (po.status === 'sedang dibuat') dbStatus = 'Sedang Dibuat';
+    else if (po.status === 'siap diambil') dbStatus = 'Siap Diambil';
+    else if (po.status === 'selesai') dbStatus = 'Selesai';
+    else if (po.status === 'gagal') dbStatus = 'Gagal';
+
     const payload: any = {
       reseller_id: po.resellerId,
       product_id: parseInt(po.productId),
       quantity: po.quantity,
       pickup_date: po.pickupDate,
       total_amount: (products.find(p => p.id === po.productId)?.price || 0) * po.quantity,
-      status: 'Pesanan Diterima'
+      status: dbStatus,
+      snap_token: po.snapToken || null
     };
     if (po.createdAt) {
       payload.created_at = po.createdAt;
@@ -550,62 +595,83 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     const { data, error } = await supabase.from('pre_orders').insert([payload]).select('*, users(name)').single();
 
     if (error) {
-      alert("Gagal membuat PO (Pastikan Anda sudah menambah kolom product_id & quantity di Supabase!): " + error.message);
+      alert("Gagal membuat PO (Pastikan Anda sudah menambah kolom product_id, quantity, & snap_token di Supabase!): " + error.message);
       throw new Error(error.message);
     } else if (data) {
+      let localStatus: PreOrder["status"] = "pesanan diterima";
+      const retStatus = data.status.toLowerCase();
+      if (retStatus === "menunggu pembayaran") localStatus = "menunggu pembayaran";
+      else if (retStatus === "sedang dibuat") localStatus = "sedang dibuat";
+      else if (retStatus === "siap diambil") localStatus = "siap diambil";
+      else if (retStatus === "selesai") localStatus = "selesai";
+      else if (retStatus === "gagal") localStatus = "gagal";
+
       // 1. Automasi 1: Menembak data ke production_plans saat Pesanan Diterima
-      try {
-        const { data: channelData } = await supabase.from('channels').select('id').ilike('name', '%reseller%').single();
-        const resellerChannelId = channelData?.id;
-
-        if (resellerChannelId) {
-          const { data: existingPlan } = await supabase.from('production_plans')
-            .select('*')
-            .eq('target_date', data.pickup_date)
-            .eq('product_id', data.product_id)
-            .eq('channel_id', resellerChannelId)
-            .single();
-
-          if (existingPlan) {
-            await supabase.from('production_plans')
-              .update({ target_production_qty: existingPlan.target_production_qty + data.quantity })
-              .eq('id', existingPlan.id);
-          } else {
-            await supabase.from('production_plans').insert([{
-              target_date: data.pickup_date,
-              product_id: data.product_id,
-              channel_id: resellerChannelId,
-              target_production_qty: data.quantity,
-              avg_past_week_qty: 0,
-              is_finalized: false
-            }]);
-          }
-        }
-      } catch (err) {
-        console.error("Gagal update production_plans (Automasi 1):", err);
+      if (data.status === 'Pesanan Diterima') {
+        await triggerProductionPlanAutomation(data.product_id, data.pickup_date, data.quantity);
       }
 
-      setPreOrders(prev => [{
+      const newPo: PreOrder = {
         id: data.id.toString(),
         resellerId: data.reseller_id,
         resellerName: data.users?.name || 'Unknown',
         productId: data.product_id?.toString() || po.productId,
         quantity: data.quantity || po.quantity,
         pickupDate: data.pickup_date || po.pickupDate,
-        status: "pesanan diterima",
-        createdAt: data.created_at || po.createdAt || new Date().toISOString()
-      }, ...prev]);
+        status: localStatus,
+        createdAt: data.created_at || po.createdAt || new Date().toISOString(),
+        snapToken: data.snap_token || null
+      };
+
+      setPreOrders(prev => [newPo, ...prev]);
+      return newPo;
     }
+    return null;
   };
 
-  const updatePreOrderStatus = async (poId: string, status: PreOrder["status"], adminNotes?: string) => {
-    const po = preOrders.find(p => p.id === poId);
+  const updatePreOrderStatus = async (poId: string, status: PreOrder["status"], adminNotes?: string, skipRefresh = false) => {
+    let po = preOrders.find(p => p.id === poId);
+    let wasFetchedFromDb = false;
+
+    if (!po) {
+      const { data: dbPo } = await supabase
+        .from('pre_orders')
+        .select('*, users(name)')
+        .eq('id', parseInt(poId))
+        .maybeSingle();
+
+      if (dbPo) {
+        wasFetchedFromDb = true;
+        let localStatus: PreOrder["status"] = "pesanan diterima";
+        const retStatus = dbPo.status.toLowerCase();
+        if (retStatus === "menunggu pembayaran") localStatus = "menunggu pembayaran";
+        else if (retStatus === "sedang dibuat") localStatus = "sedang dibuat";
+        else if (retStatus === "siap diambil") localStatus = "siap diambil";
+        else if (retStatus === "selesai") localStatus = "selesai";
+        else if (retStatus === "gagal") localStatus = "gagal";
+
+        po = {
+          id: dbPo.id.toString(),
+          resellerId: dbPo.reseller_id,
+          resellerName: dbPo.users?.name || 'Unknown',
+          productId: dbPo.product_id?.toString() || '',
+          quantity: dbPo.quantity || 0,
+          pickupDate: dbPo.pickup_date || '',
+          status: localStatus,
+          createdAt: dbPo.created_at,
+          snapToken: dbPo.snap_token || null
+        };
+      }
+    }
+
     if (!po) return;
 
     let dbStatus = "Pesanan Diterima";
-    if (status === "sedang dibuat") dbStatus = "Sedang Dibuat";
-    if (status === "siap diambil") dbStatus = "Siap Diambil";
-    if (status === "selesai") dbStatus = "Selesai";
+    if (status === "menunggu pembayaran") dbStatus = "Menunggu Pembayaran";
+    else if (status === "sedang dibuat") dbStatus = "Sedang Dibuat";
+    else if (status === "siap diambil") dbStatus = "Siap Diambil";
+    else if (status === "selesai") dbStatus = "Selesai";
+    else if (status === "gagal") dbStatus = "Gagal";
 
     const payload: any = { status: dbStatus };
     if (adminNotes !== undefined) payload.admin_notes = adminNotes;
@@ -619,9 +685,16 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     else if (data) {
       let localStatus: PreOrder["status"] = "pesanan diterima";
       const retStatus = data.status.toLowerCase();
-      if (retStatus === "sedang dibuat") localStatus = "sedang dibuat";
+      if (retStatus === "menunggu pembayaran") localStatus = "menunggu pembayaran";
+      else if (retStatus === "sedang dibuat") localStatus = "sedang dibuat";
       else if (retStatus === "siap diambil") localStatus = "siap diambil";
       else if (retStatus === "selesai") localStatus = "selesai";
+      else if (retStatus === "gagal") localStatus = "gagal";
+
+      // 1. Automasi 1: Menembak data ke production_plans saat Pesanan Diterima dari Menunggu Pembayaran
+      if (dbStatus === "Pesanan Diterima" && po.status === "menunggu pembayaran") {
+        await triggerProductionPlanAutomation(parseInt(po.productId), po.pickupDate, po.quantity);
+      }
 
       // 2. Automasi 2: "Siap Diambil" -> Moci yang selesai dibuat menambah saldo global_stocks
       if (status === "siap diambil" && po.status !== "siap diambil" && po.status !== "selesai") {
@@ -687,14 +760,18 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
          }
       }
 
-      setPreOrders(prev => prev.map(p => p.id === poId ? { 
-        ...p, 
-        status: localStatus,
-        adminNotes: data.admin_notes || p.adminNotes
-      } : p));
-      
-      if (status === 'selesai' || status === 'siap diambil') {
-        refreshData();
+      if (wasFetchedFromDb) {
+        await refreshData();
+      } else {
+        setPreOrders(prev => prev.map(p => p.id === poId ? { 
+          ...p, 
+          status: localStatus,
+          adminNotes: data.admin_notes || p.adminNotes
+        } : p));
+        
+        if (!skipRefresh && (status === 'selesai' || status === 'siap diambil')) {
+          refreshData();
+        }
       }
     }
   };

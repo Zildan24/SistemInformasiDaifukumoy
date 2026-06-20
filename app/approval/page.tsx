@@ -2,12 +2,12 @@
 
 import React, { useState, useMemo } from "react";
 import { useData } from "../context/DataContext";
-import { ClipboardCheck, Check, Box, Clock, Phone } from "lucide-react";
+import { ClipboardCheck, Check, Box, Clock } from "lucide-react";
 import { confirmAction, showSuccess } from "../utils/alert";
 
 export default function ApprovalCenterPage() {
-  const { preOrders, products, updatePreOrderStatus } = useData();
-  const [filter, setFilter] = useState<"all" | "pesanan diterima" | "sedang dibuat" | "siap diambil" | "selesai">("pesanan diterima");
+  const { preOrders, products, updatePreOrderStatus, refreshData } = useData();
+  const [filter, setFilter] = useState<"all" | "menunggu pembayaran" | "pesanan diterima" | "sedang dibuat" | "siap diambil" | "selesai" | "gagal">("pesanan diterima");
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
 
   const filteredPOs = preOrders.filter(po => filter === "all" || po.status === filter);
@@ -26,6 +26,8 @@ export default function ApprovalCenterPage() {
       "sedang dibuat": statuses.filter(s => s === "sedang dibuat").length,
       "siap diambil": statuses.filter(s => s === "siap diambil").length,
       "selesai": statuses.filter(s => s === "selesai").length,
+      "menunggu pembayaran": statuses.filter(s => s === "menunggu pembayaran").length,
+      "gagal": statuses.filter(s => s === "gagal").length,
       "all": statuses.length,
     };
   }, [preOrders]);
@@ -35,6 +37,7 @@ export default function ApprovalCenterPage() {
       id: string; // generated group id
       resellerId: string;
       resellerName: string;
+      resellerPhone?: string;
       pickupDate: string;
       status: string;
       items: any[];
@@ -83,9 +86,11 @@ export default function ApprovalCenterPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case "menunggu pembayaran": return <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap">Menunggu Pembayaran</span>;
       case "sedang dibuat": return <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap">Sedang Dibuat</span>;
       case "siap diambil": return <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap">Siap Diambil</span>;
       case "selesai": return <span className="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap">Selesai</span>;
+      case "gagal": return <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap">Gagal</span>;
       default: return <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold animate-pulse whitespace-nowrap">Pesanan Diterima</span>;
     }
   };
@@ -93,9 +98,12 @@ export default function ApprovalCenterPage() {
   const handleUpdateStatus = async (group: any, newStatus: any, confirmTitle: string, confirmDesc: string, successTitle: string, successDesc: string) => {
     const confirmed = await confirmAction(confirmTitle, confirmDesc);
     if (confirmed) {
-      // Update all items in the group
+      // Update all items in the group sequentially without intermediate refresh
       for (const item of group.items) {
-        await updatePreOrderStatus(item.id, newStatus);
+        await updatePreOrderStatus(item.id, newStatus, undefined, true);
+      }
+      if (newStatus === 'selesai' || newStatus === 'siap diambil') {
+        await refreshData();
       }
       showSuccess(successTitle, successDesc);
     }
@@ -108,12 +116,12 @@ export default function ApprovalCenterPage() {
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <ClipboardCheck className="text-primary" /> Kelola Pesanan PO
+            <ClipboardCheck className="text-primary" /> Kelola PO
           </h2>
         </div>
 
         <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-200 overflow-x-auto no-scrollbar">
-          {(["pesanan diterima", "sedang dibuat", "siap diambil", "selesai", "all"] as const).map(f => (
+          {(["pesanan diterima", "sedang dibuat", "siap diambil", "selesai", "menunggu pembayaran", "gagal", "all"] as const).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -140,7 +148,7 @@ export default function ApprovalCenterPage() {
           </div>
         ) : (
           groupedPOs.map(group => (
-            <div key={group.id} className={`bg-white p-4 rounded-xl shadow-sm border-l-4 border-y border-r border-gray-100 transition-all ${group.status === 'pesanan diterima' ? 'border-l-orange-400' : group.status === 'sedang dibuat' ? 'border-l-blue-400' : group.status === 'siap diambil' ? 'border-l-green-400' : 'border-l-teal-400'}`}>
+            <div key={group.id} className={`bg-white p-4 rounded-xl shadow-sm border-l-4 border-y border-r border-gray-100 transition-all ${group.status === 'pesanan diterima' ? 'border-l-orange-400' : group.status === 'sedang dibuat' ? 'border-l-blue-400' : group.status === 'siap diambil' ? 'border-l-green-400' : group.status === 'gagal' ? 'border-l-gray-400' : 'border-l-teal-400'}`}>
               <div className="flex flex-col md:flex-row justify-between md:items-start gap-3">
                 
                 <div className="flex items-start gap-3 flex-1">
@@ -158,7 +166,13 @@ export default function ApprovalCenterPage() {
                           className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center text-green-600 hover:bg-green-200 transition-colors shrink-0"
                           title="Hubungi via WhatsApp"
                         >
-                          <Phone size={12} fill="currentColor" strokeWidth={0} />
+                          <svg 
+                            className="w-5 h-5 text-[#25D366] fill-current" 
+                            viewBox="0 0 24 24" 
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.746.953 3.71 1.454 5.709 1.455h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                          </svg>
                         </a>
                       )}
                       <button 

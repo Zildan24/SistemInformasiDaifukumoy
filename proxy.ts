@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)", "/login"]);
 
 export default clerkMiddleware(async (auth, request) => {
+  console.log("PROXY EXECUTING FOR PATH:", request.nextUrl.pathname);
   const { userId } = await auth();
 
   if (userId && isPublicRoute(request)) {
@@ -36,9 +37,7 @@ export default clerkMiddleware(async (auth, request) => {
           const data = await res.json();
           if (data && data.length > 0) {
             const role = data[0].role?.toLowerCase();
-            if (role === "admin") {
-              return NextResponse.redirect(new URL("/global-stock", request.url));
-            } else if (role === "reseller") {
+            if (role === "reseller") {
               return NextResponse.redirect(new URL("/reseller", request.url));
             }
           } else {

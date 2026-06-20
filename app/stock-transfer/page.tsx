@@ -16,6 +16,23 @@ export default function StockTransferPage() {
     quantity: 1,
     locationId: ""
   });
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+
+  const activeCategories = useMemo(() => {
+    return Array.from(
+      new Set(
+        products
+          .filter(p => p.isActive)
+          .map(p => p.category)
+          .filter(Boolean)
+      )
+    ) as string[];
+  }, [products]);
+
+  const filteredProductsByCategory = useMemo(() => {
+    if (!selectedCategory) return [];
+    return products.filter(p => p.isActive && p.category === selectedCategory);
+  }, [products, selectedCategory]);
 
   if (currentUser?.role !== "admin") {
     return <div className="p-6 text-center text-gray-500">Akses khusus Admin.</div>;
@@ -64,6 +81,7 @@ export default function StockTransferPage() {
         });
         showSuccess("Transfer Berhasil!", "Stok telah berhasil dikirim ke lokasi tujuan.");
         setTransferForm({ ...transferForm, quantity: 1, productId: "", locationId: "" });
+        setSelectedCategory("");
       } catch (err: any) {
         showError("Gagal Mengirim Stok", err.message);
       }
@@ -87,15 +105,35 @@ export default function StockTransferPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Pilih Kategori</label>
+                <select 
+                  value={selectedCategory}
+                  onChange={e => {
+                    setSelectedCategory(e.target.value);
+                    setTransferForm(prev => ({ ...prev, productId: "", quantity: 1 }));
+                  }}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/50 outline-none text-sm font-medium capitalize"
+                >
+                  <option value="">-- Pilih Kategori --</option>
+                  {activeCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Pilih Produk</label>
                 <select 
                   required
+                  disabled={!selectedCategory}
                   value={transferForm.productId}
                   onChange={e => setTransferForm({...transferForm, productId: e.target.value})}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/50 outline-none text-sm font-medium"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/50 outline-none text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="">-- Pilih Produk --</option>
-                  {products.filter(p => p.isActive).map(p => (
+                  <option value="">
+                    {selectedCategory ? "-- Pilih Produk --" : "-- Pilih Kategori Terlebih Dahulu --"}
+                  </option>
+                  {filteredProductsByCategory.map(p => (
                     <option key={p.id} value={p.id}>{p.name} (Sisa: {stocks.find(s => s.productId === p.id)?.quantityActual || 0} pcs)</option>
                   ))}
                 </select>

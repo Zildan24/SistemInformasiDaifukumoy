@@ -5,6 +5,15 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  async redirects() {
+    return [
+      {
+        source: '/reseller/riwayat-po',
+        destination: '/reseller/history',
+        permanent: true,
+      },
+    ];
+  }
 };
 
-export default nextConfig
+export default nextConfig;

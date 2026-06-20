@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
-import { useData, Product } from "../context/DataContext";
+import { useData, Product, PreOrder } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
 import { useRouter } from "next/navigation";
 import { ShoppingCart, Clock, Plus, Minus, Trash2, X, AlertCircle, Search, Phone, AtSign, Mail, MapPin } from "lucide-react";
@@ -13,7 +13,7 @@ type CartItem = {
 };
 
 export default function ResellerCatalogPage() {
-  const { products, stocks, addPreOrder, channels, promoBanners, refreshData } = useData();
+  const { products, stocks, addPreOrder, updatePreOrderStatus, channels, promoBanners, refreshData } = useData();
   const { currentUser } = useAuth();
   const router = useRouter();
   
@@ -175,20 +175,40 @@ export default function ResellerCatalogPage() {
         const data = await response.json();
 
         if (data.token) {
+          // Immediately insert the order into the Supabase database with status 'menunggu pembayaran'
+          const orderId = `PO-${Date.now()}-${currentResellerId.substring(0, 8)}`;
+          const batchCreatedAt = new Date().toISOString();
+          const createdOrders: PreOrder[] = [];
+          
+          try {
+            for (const item of cart) {
+              const po = await addPreOrder({
+                resellerId: currentResellerId,
+                resellerName: currentResellerName,
+                productId: item.product.id,
+                quantity: item.quantity,
+                pickupDate: pickupDate,
+                createdAt: batchCreatedAt,
+                status: 'menunggu pembayaran',
+                snapToken: `${orderId}:${data.token}`
+              });
+              if (po) {
+                createdOrders.push(po);
+              }
+            }
+          } catch (insertError) {
+            console.error("Gagal melakukan insert awal PO:", insertError);
+            showError("Gagal Membuat Pesanan", "Gagal menyimpan detail pesanan ke database.");
+            return;
+          }
+
           // @ts-ignore
           window.snap.pay(data.token, {
             onSuccess: async function(result: any) {
               try {
-                const batchCreatedAt = new Date().toISOString();
-                for (const item of cart) {
-                  await addPreOrder({
-                    resellerId: currentResellerId,
-                    resellerName: currentResellerName,
-                    productId: item.product.id,
-                    quantity: item.quantity,
-                    pickupDate: pickupDate,
-                    createdAt: batchCreatedAt,
-                  });
+                // Update status of all created orders to 'pesanan diterima'
+                for (const order of createdOrders) {
+                  await updatePreOrderStatus(order.id, 'pesanan diterima', undefined, true);
                 }
                 await refreshData();
                 setCart([]);
@@ -197,18 +217,30 @@ export default function ResellerCatalogPage() {
                 setIsCartOpen(false);
                 showSuccess("Pembayaran Sukses!", "Pesanan PO Anda telah diterima dan masuk antrean produksi.");
               } catch (e) {
-                console.error("Save PO error:", e);
-                showError("Gagal Menyimpan", "Pembayaran berhasil tetapi gagal menyimpan pesanan ke database.");
+                console.error("Update PO success status error:", e);
+                showError("Gagal Menyimpan", "Pembayaran berhasil tetapi gagal memperbarui status pesanan ke database.");
               }
             },
             onPending: function(result: any) {
-              showSuccess("Menunggu Pembayaran", "Silakan selesaikan pembayaran Anda sesuai instruksi.");
+              setCart([]);
+              localStorage.removeItem("daifukumoy_reseller_cart");
+              setPickupDate("");
+              setIsCartOpen(false);
+              router.push("/reseller/history");
             },
             onError: function(result: any) {
-              showError("Pembayaran Gagal", "Terjadi kesalahan saat memproses pembayaran.");
+              setCart([]);
+              localStorage.removeItem("daifukumoy_reseller_cart");
+              setPickupDate("");
+              setIsCartOpen(false);
+              router.push("/reseller/history");
             },
             onClose: function() {
-              showError("Dibatalkan", "Anda menutup pop-up sebelum menyelesaikan pembayaran.");
+              setCart([]);
+              localStorage.removeItem("daifukumoy_reseller_cart");
+              setPickupDate("");
+              setIsCartOpen(false);
+              router.push("/reseller/history");
             }
           });
         } else {

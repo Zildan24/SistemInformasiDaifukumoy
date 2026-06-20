@@ -158,6 +158,48 @@ export default function KeuanganPage() {
         </div>
       </div>
 
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Total Pemasukan Card */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4">
+          <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-500 shrink-0">
+            <PlusCircle size={24} />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Total Pemasukan</p>
+            <p className="text-xl font-bold text-slate-800 mt-0.5">
+              {typeFilter === "expense" ? "-" : formatCurrency(totalIncome)}
+            </p>
+          </div>
+        </div>
+
+        {/* Total Pengeluaran Card */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4">
+          <div className="p-4 rounded-2xl bg-red-50 text-red-500 shrink-0">
+            <MinusCircle size={24} />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Total Pengeluaran</p>
+            <p className="text-xl font-bold text-slate-800 mt-0.5">
+              {typeFilter === "income" ? "-" : formatCurrency(totalExpense)}
+            </p>
+          </div>
+        </div>
+
+        {/* Saldo Aktif / Selisih Card */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4">
+          <div className="p-4 rounded-2xl bg-blue-50 text-blue-500 shrink-0">
+            <Wallet size={24} />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Selisih (Net)</p>
+            <p className={`text-xl font-bold mt-0.5 ${typeFilter !== "all" ? "text-slate-800" : activeBalance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+              {typeFilter !== "all" ? "-" : formatCurrency(activeBalance)}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Input Form */}
         <div className="lg:col-span-1 bg-white p-8 rounded-3xl shadow-sm border border-slate-100 h-fit leading-relaxed">

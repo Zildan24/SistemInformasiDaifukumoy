@@ -110,7 +110,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
            const roleLower = dbUserObj.role.toLowerCase();
            let isRedirecting = false;
            if (pathname === "/" || pathname === "/login" || pathname === "/sign-in" || pathname === "/sign-up") {
-              if (roleLower === "admin" && pathname !== "/global-stock") { router.push("/global-stock"); isRedirecting = true; }
+              if (roleLower === "admin" && pathname !== "/") { router.push("/"); isRedirecting = true; }
               else if (roleLower === "owner" && pathname !== "/") { router.push("/"); isRedirecting = true; }
               else if (roleLower === "reseller" && pathname !== "/reseller") { router.push("/reseller"); isRedirecting = true; }
            }
@@ -132,7 +132,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           
           const roleLower = parsed.role.toLowerCase();
           if (pathname === "/" || pathname === "/login" || pathname === "/sign-in" || pathname === "/sign-up") {
-              if (roleLower === "admin" && pathname !== "/global-stock") { router.push("/global-stock"); fallbackRedirecting = true; }
+              if (roleLower === "admin" && pathname !== "/") { router.push("/"); fallbackRedirecting = true; }
               else if (roleLower === "owner" && pathname !== "/") { router.push("/"); fallbackRedirecting = true; }
               else if (roleLower === "reseller" && pathname !== "/reseller") { router.push("/reseller"); fallbackRedirecting = true; }
           }
@@ -185,7 +185,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     
     const roleLower = user.role.toLowerCase();
     if (roleLower === "owner") router.push("/");
-    else if (roleLower === "admin") router.push("/keuangan");
+    else if (roleLower === "admin") router.push("/");
     else if (roleLower === "reseller") router.push("/reseller");
     else router.push("/");
   };

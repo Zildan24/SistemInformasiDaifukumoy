@@ -35,42 +35,30 @@ export default function PlanningPage() {
       (subLocation ? l.subLocation === subLocation : true)
     );
 
-    const sameDayLogs = productLogs
-      .filter(l => new Date(l.date).getDay() === tomorrowDayOfWeek)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
-    const last4SameDays = sameDayLogs.slice(-4);
-    
-    let average = 0;
-    if (last4SameDays.length > 0) {
-      average = last4SameDays.reduce((acc, l) => acc + l.soldQuantity, 0) / last4SameDays.length;
-    }
+    // Hitung tanggal 1 minggu lalu, 2 minggu lalu, dan 3 minggu lalu pada hari yang sama
+    const date1 = format(addDays(tomorrow, -7), "yyyy-MM-dd");
+    const date2 = format(addDays(tomorrow, -14), "yyyy-MM-dd");
+    const date3 = format(addDays(tomorrow, -21), "yyyy-MM-dd");
 
-    const lastWeekSameDayDate = format(addDays(tomorrow, -7), "yyyy-MM-dd");
-    const lastWeekSameDayLog = productLogs.find(l => l.date === lastWeekSameDayDate);
-    const lastWeekSameDayQty = lastWeekSameDayLog ? lastWeekSameDayLog.soldQuantity : 0;
+    const log1 = productLogs.find(l => l.date === date1);
+    const log2 = productLogs.find(l => l.date === date2);
+    const log3 = productLogs.find(l => l.date === date3);
 
-    let trendPct = 0;
-    if (lastWeekSameDayQty > 0) {
-      trendPct = ((average - lastWeekSameDayQty) / lastWeekSameDayQty) * 100;
-    } else if (average > 0) {
-      trendPct = 100; 
-    }
+    const sold1 = log1 ? log1.soldQuantity : 0;
+    const sold2 = log2 ? log2.soldQuantity : 0;
+    const sold3 = log3 ? log3.soldQuantity : 0;
 
-    let recommendation = average;
-    if (trendPct > 0) {
-      const cappedTrend = Math.min(trendPct, 50); // Maksimal adjustment 50%
-      recommendation = average * (1 + (cappedTrend / 100));
-    }
+    // Simple Moving Average (SMA) dari 3 minggu terakhir pada hari yang sama
+    const average = (sold1 + sold2 + sold3) / 3;
 
     return {
       average: Math.ceil(average),
-      recommendation: Math.ceil(recommendation),
-      trendPct: Math.round(trendPct)
+      recommendation: Math.ceil(average),
+      trendPct: 0
     };
   };
 
-  // --- Algoritma Heuristik (Day-of-the-Week & Trend) ---
+  // --- Algoritma Heuristik (Day-of-the-Week & SMA) ---
   const predictions = useMemo(() => {
     const results: Record<string, { average: number, recommendation: number, trendPct: number }> = {};
     const activeChannels = channels.filter(c => c.status === "active");
@@ -79,36 +67,33 @@ export default function PlanningPage() {
       products.forEach(p => {
         let totalAvg = 0;
         let totalRec = 0;
-        let validLocationsCount = 0;
-        let totalTrend = 0;
         
-        activeChannels.forEach(c => {
+        // Hanya hitung rekomendasi dari kanal Stand
+        const standChannels = activeChannels.filter(c => c.name.toLowerCase() === "stand");
+        
+        standChannels.forEach(c => {
           if (c.hasSubLocation) {
             const locs = locations.filter(l => l.channelId === c.id && l.status === "active");
             locs.forEach(loc => {
               const pred = calculateRecommendation(p.id, c.name, loc.name);
               totalAvg += pred.average;
               totalRec += pred.recommendation;
-              if (pred.average > 0 || pred.trendPct !== 0) {
-                totalTrend += pred.trendPct;
-                validLocationsCount++;
-              }
             });
           } else {
             const pred = calculateRecommendation(p.id, c.name);
             totalAvg += pred.average;
             totalRec += pred.recommendation;
-            if (pred.average > 0 || pred.trendPct !== 0) {
-              totalTrend += pred.trendPct;
-              validLocationsCount++;
-            }
           }
         });
 
-        const avgTrend = validLocationsCount > 0 ? Math.round(totalTrend / validLocationsCount) : 0;
-        results[p.id] = { average: totalAvg, recommendation: totalRec, trendPct: avgTrend };
+        results[p.id] = { average: totalAvg, recommendation: totalRec, trendPct: 0 };
       });
       return results;
+    }
+
+    // Jika bukan kanal Stand (misal Reseller), rekomendasi bernilai 0
+    if (selectedCanal.toLowerCase() !== "stand") {
+      return {};
     }
 
     const channelObj = channels.find(c => c.name === selectedCanal);
@@ -119,7 +104,7 @@ export default function PlanningPage() {
     });
 
     return results;
-  }, [products, productionLogs, tomorrowDayOfWeek, tomorrow, selectedCanal, selectedSubLocation, channels, locations]);
+  }, [products, productionLogs, tomorrow, selectedCanal, selectedSubLocation, channels, locations]);
 
   const tomorrowStr = format(tomorrow, "yyyy-MM-dd");
   
@@ -128,8 +113,8 @@ export default function PlanningPage() {
     
     const rt: Record<string, number> = {};
     preOrders.forEach(po => {
-      // Hanya hitung PO yang tanggal ambilnya = target date (besok)
-      if (po.pickupDate === tomorrowStr) {
+      // Hanya hitung PO yang tanggal ambilnya = target date (besok) dan bukan berstatus 'menunggu pembayaran'
+      if (po.pickupDate === tomorrowStr && po.status !== 'menunggu pembayaran' && po.status !== 'gagal') {
         rt[po.productId] = (rt[po.productId] || 0) + po.quantity;
       }
     });
