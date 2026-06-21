@@ -276,8 +276,8 @@ export default function ReportsPage() {
               <div className="w-1.5 h-4 bg-primary rounded-full"></div>
               <h3 className="text-sm font-bold text-gray-800 uppercase tracking-tight print:text-[10pt]">II. Pendapatan Per Kanal</h3>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-slate-100 print:rounded-none">
-              <table className="w-full text-left border-collapse text-sm print:text-[9pt]">
+            <div className="overflow-x-auto rounded-2xl border border-slate-100 print:rounded-none">
+              <table className="w-full text-left border-collapse text-sm print:text-[9pt] min-w-[500px]">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
                     <th className="p-4 font-bold text-slate-500 uppercase tracking-wider print:p-1.5">Nama Kanal</th>
@@ -357,8 +357,8 @@ export default function ReportsPage() {
                 <div className="w-1.5 h-4 bg-primary rounded-full"></div>
                 <h3 className="text-sm font-bold text-gray-800 uppercase tracking-tight print:text-[10pt]">IV. Hero Products</h3>
               </div>
-              <div className="overflow-hidden rounded-xl border border-slate-100">
-                <table className="w-full text-left border-collapse text-sm print:text-[9pt]">
+              <div className="overflow-x-auto rounded-xl border border-slate-100">
+                <table className="w-full text-left border-collapse text-sm print:text-[9pt] min-w-[300px]">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100">
                       <th className="p-3 font-bold text-slate-400 uppercase text-[10px] tracking-wider">Nama Produk</th>

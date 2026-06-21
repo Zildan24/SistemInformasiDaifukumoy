@@ -285,15 +285,15 @@ export default function PlanningPage() {
           </div>
         ) : (
           <>
-            <div className="p-4 border-b border-gray-50 flex justify-between items-center px-6 bg-white">
-               <span className="text-sm font-bold text-primary bg-primary/5 px-3 py-1.5 rounded-lg border border-primary/10 flex items-center gap-2">
+            <div className="p-4 border-b border-gray-50 flex flex-col sm:flex-row justify-between sm:items-center gap-3 px-6 bg-white">
+               <span className="text-sm font-bold text-primary bg-primary/5 px-3 py-1.5 rounded-lg border border-primary/10 flex items-center gap-2 self-start">
                  <PackageOpen size={16} /> 
                  {selectedCanal === "Semua" ? "Akumulasi Seluruh Kanal" : `Data Riwayat: ${selectedSubLocation || selectedCanal}`}
                </span>
                {selectedCanal !== "Semua" && selectedCanal !== "Reseller" && (
                  <button 
                   onClick={handleApplyRecommendations}
-                  className="bg-gradient-to-r from-primary to-accent hover:opacity-90 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-transform transform hover:scale-[1.02] shadow-lg shadow-primary/30"
+                  className="bg-gradient-to-r from-primary to-accent hover:opacity-90 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-transform transform hover:scale-[1.02] shadow-lg shadow-primary/30 w-full sm:w-auto"
                 >
                   <Wand2 size={18} /> Terapkan Saran Sistem
                 </button>
@@ -301,7 +301,7 @@ export default function PlanningPage() {
             </div>
               
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left text-gray-500">
+              <table className="w-full text-sm text-left text-gray-500 min-w-[600px]">
                 <thead className="text-xs text-gray-600 uppercase bg-gray-50/50 border-b border-gray-100">
                   <tr>
                     <th scope="col" className="px-6 py-5 font-bold tracking-wider">Varian Produk</th>

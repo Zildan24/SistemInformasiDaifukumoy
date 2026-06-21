@@ -112,89 +112,93 @@ export default function GlobalStockPage() {
 
       {activeTab === "stok" && (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-montserrat text-sm">
-                <th className="p-4 font-semibold">Produk</th>
-                <th className="p-4 font-semibold">Kategori</th>
-                <th className="p-4 font-semibold text-right">Stok Gudang (Pcs)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {products.map(product => {
-                const stock = globalStocks[product.id] || 0;
-                return (
-                  <tr key={product.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
-                          {product.imageUrl ? <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" /> : <Package size={20} className="text-gray-400" />}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-montserrat text-sm">
+                  <th className="p-4 font-semibold">Produk</th>
+                  <th className="p-4 font-semibold">Kategori</th>
+                  <th className="p-4 font-semibold text-right">Stok Gudang (Pcs)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {products.map(product => {
+                  const stock = globalStocks[product.id] || 0;
+                  return (
+                    <tr key={product.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
+                            {product.imageUrl ? <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" /> : <Package size={20} className="text-gray-400" />}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-800">{product.name}</p>
+                            <p className="text-xs text-gray-400">{product.description.substring(0, 40)}...</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-gray-800">{product.name}</p>
-                          <p className="text-xs text-gray-400">{product.description.substring(0, 40)}...</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider">{product.category || "Umum"}</span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <span className={`text-lg font-black ${stock > 20 ? 'text-green-600' : stock > 0 ? 'text-yellow-500' : 'text-red-500'}`}>
-                        {stock}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="p-4">
+                        <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider">{product.category || "Umum"}</span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <span className={`text-lg font-black ${stock > 20 ? 'text-green-600' : stock > 0 ? 'text-yellow-500' : 'text-red-500'}`}>
+                          {stock}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {activeTab === "log" && (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-montserrat text-sm">
-                <th className="p-4 font-semibold">Tanggal</th>
-                <th className="p-4 font-semibold">Produk</th>
-                <th className="p-4 font-semibold text-center">Tipe</th>
-                <th className="p-4 font-semibold text-right">Jumlah</th>
-                <th className="p-4 font-semibold">Keterangan</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {globalStockLogs.map(log => {
-                const product = products.find(p => p.id === log.productId);
-                const isIn = log.type === "in";
-                const isPending = log.date > todayStr;
-                return (
-                  <tr key={log.id} className="hover:bg-gray-50/50 transition-colors text-sm">
-                    <td className="p-4 text-gray-500 font-medium flex items-center gap-2">
-                      {log.date}
-                      {isPending && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-bold">BESOK / PENDING</span>}
-                    </td>
-                    <td className="p-4 font-bold text-gray-800">{product?.name}</td>
-                    <td className="p-4 text-center">
-                      <div className={`inline-flex items-center justify-center p-1.5 rounded-lg ${isIn ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                        {isIn ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-                      </div>
-                    </td>
-                    <td className={`p-4 text-right font-black ${isIn ? 'text-green-600' : 'text-red-600'}`}>
-                      {isIn ? '+' : '-'}{log.quantity}
-                    </td>
-                    <td className="p-4 text-gray-600">{log.description}</td>
-                  </tr>
-                );
-              })}
-              {globalStockLogs.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-400">Belum ada riwayat aktivitas gudang.</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-montserrat text-sm">
+                  <th className="p-4 font-semibold">Tanggal</th>
+                  <th className="p-4 font-semibold">Produk</th>
+                  <th className="p-4 font-semibold text-center">Tipe</th>
+                  <th className="p-4 font-semibold text-right">Jumlah</th>
+                  <th className="p-4 font-semibold">Keterangan</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {globalStockLogs.map(log => {
+                  const product = products.find(p => p.id === log.productId);
+                  const isIn = log.type === "in";
+                  const isPending = log.date > todayStr;
+                  return (
+                    <tr key={log.id} className="hover:bg-gray-50/50 transition-colors text-sm">
+                      <td className="p-4 text-gray-500 font-medium flex items-center gap-2">
+                        {log.date}
+                        {isPending && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-bold">BESOK / PENDING</span>}
+                      </td>
+                      <td className="p-4 font-bold text-gray-800">{product?.name}</td>
+                      <td className="p-4 text-center">
+                        <div className={`inline-flex items-center justify-center p-1.5 rounded-lg ${isIn ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                          {isIn ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                        </div>
+                      </td>
+                      <td className={`p-4 text-right font-black ${isIn ? 'text-green-600' : 'text-red-600'}`}>
+                        {isIn ? '+' : '-'}{log.quantity}
+                      </td>
+                      <td className="p-4 text-gray-600">{log.description}</td>
+                    </tr>
+                  );
+                })}
+                {globalStockLogs.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-gray-400">Belum ada riwayat aktivitas gudang.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

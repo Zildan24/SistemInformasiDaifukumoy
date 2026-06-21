@@ -203,32 +203,34 @@ export default function StockTransferPage() {
       <div>
         <h3 className="font-bold text-gray-800 text-lg mb-4">Riwayat Pengiriman Hari Ini</h3>
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-montserrat text-sm">
-                <th className="p-4 font-semibold">Produk</th>
-                <th className="p-4 font-semibold text-right">Jumlah</th>
-                <th className="p-4 font-semibold">Tujuan</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {stockTransfers.filter(t => t.date === format(new Date(), "yyyy-MM-dd")).map(transfer => {
-                const product = products.find(p => p.id === transfer.productId);
-                return (
-                  <tr key={transfer.id} className="hover:bg-gray-50/50 transition-colors text-sm">
-                    <td className="p-4 font-bold text-gray-800">{product?.name}</td>
-                    <td className="p-4 text-right font-black text-primary">{transfer.quantity} Pcs</td>
-                    <td className="p-4 text-gray-600 font-medium">{transfer.destination}</td>
-                  </tr>
-                );
-              })}
-              {stockTransfers.filter(t => t.date === format(new Date(), "yyyy-MM-dd")).length === 0 && (
-                <tr>
-                  <td colSpan={3} className="p-8 text-center text-gray-400">Belum ada pengiriman stok hari ini.</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[500px]">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-montserrat text-sm">
+                  <th className="p-4 font-semibold">Produk</th>
+                  <th className="p-4 font-semibold text-right">Jumlah</th>
+                  <th className="p-4 font-semibold">Tujuan</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {stockTransfers.filter(t => t.date === format(new Date(), "yyyy-MM-dd")).map(transfer => {
+                  const product = products.find(p => p.id === transfer.productId);
+                  return (
+                    <tr key={transfer.id} className="hover:bg-gray-50/50 transition-colors text-sm">
+                      <td className="p-4 font-bold text-gray-800">{product?.name}</td>
+                      <td className="p-4 text-right font-black text-primary">{transfer.quantity} Pcs</td>
+                      <td className="p-4 text-gray-600 font-medium">{transfer.destination}</td>
+                    </tr>
+                  );
+                })}
+                {stockTransfers.filter(t => t.date === format(new Date(), "yyyy-MM-dd")).length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="p-8 text-center text-gray-400">Belum ada pengiriman stok hari ini.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

@@ -150,89 +150,93 @@ export default function RawMaterialsPage() {
               <Plus size={16} /> Tambah Item Baru
             </button>
           </div>
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-montserrat text-sm">
-                <th className="p-4 font-semibold">Nama Bahan Baku</th>
-                <th className="p-4 font-semibold text-center">Batas Aman</th>
-                <th className="p-4 font-semibold text-right">Sisa Stok</th>
-                <th className="p-4 font-semibold text-center w-24">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {rawMaterials.map(rm => {
-                const stock = currentStocks[rm.id] || 0;
-                const isLow = stock <= rm.minStock;
-                return (
-                  <tr key={rm.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="p-4">
-                      <p className="font-bold text-gray-800">{rm.name}</p>
-                    </td>
-                    <td className="p-4 text-center">
-                      <span className="text-gray-500 font-medium text-sm">{rm.minStock} {rm.unit}</span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {isLow && <AlertCircle size={16} className="text-red-500 animate-pulse" />}
-                        <span className={`text-lg font-black ${isLow ? 'text-red-500' : 'text-green-600'}`}>
-                          {stock} <span className="text-sm font-bold text-gray-400">{rm.unit}</span>
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-center gap-2">
-                        <button onClick={() => openEdit(rm)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={16}/></button>
-                        <button onClick={() => handleDeleteMaterial(rm.id, rm.name)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16}/></button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {rawMaterials.length === 0 && (
-                <tr><td colSpan={4} className="p-8 text-center text-gray-400">Belum ada data bahan baku.</td></tr>
-              )}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[500px]">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-montserrat text-sm">
+                  <th className="p-4 font-semibold">Nama Bahan Baku</th>
+                  <th className="p-4 font-semibold text-center">Batas Aman</th>
+                  <th className="p-4 font-semibold text-right">Sisa Stok</th>
+                  <th className="p-4 font-semibold text-center w-24">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rawMaterials.map(rm => {
+                  const stock = currentStocks[rm.id] || 0;
+                  const isLow = stock <= rm.minStock;
+                  return (
+                    <tr key={rm.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="p-4">
+                        <p className="font-bold text-gray-800">{rm.name}</p>
+                      </td>
+                      <td className="p-4 text-center">
+                        <span className="text-gray-500 font-medium text-sm">{rm.minStock} {rm.unit}</span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {isLow && <AlertCircle size={16} className="text-red-500 animate-pulse" />}
+                          <span className={`text-lg font-black ${isLow ? 'text-red-500' : 'text-green-600'}`}>
+                            {stock} <span className="text-sm font-bold text-gray-400">{rm.unit}</span>
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => openEdit(rm)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={16}/></button>
+                          <button onClick={() => handleDeleteMaterial(rm.id, rm.name)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {rawMaterials.length === 0 && (
+                  <tr><td colSpan={4} className="p-8 text-center text-gray-400">Belum ada data bahan baku.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {activeTab === "log" && (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-montserrat text-sm">
-                <th className="p-4 font-semibold">Tanggal</th>
-                <th className="p-4 font-semibold">Bahan Baku</th>
-                <th className="p-4 font-semibold text-center">Tipe</th>
-                <th className="p-4 font-semibold text-right">Jumlah</th>
-                <th className="p-4 font-semibold">Keterangan</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {rawMaterialLogs.map(log => {
-                const rm = rawMaterials.find(r => r.id === log.rawMaterialId);
-                const isIn = log.type === "in";
-                return (
-                  <tr key={log.id} className="hover:bg-gray-50/50 transition-colors text-sm">
-                    <td className="p-4 text-gray-500 font-medium">{log.date}</td>
-                    <td className="p-4 font-bold text-gray-800">{rm?.name}</td>
-                    <td className="p-4 text-center">
-                      <div className={`inline-flex items-center justify-center p-1.5 rounded-lg ${isIn ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                        {isIn ? <ArrowDownToLine size={16} /> : <ArrowUpFromLine size={16} />}
-                      </div>
-                    </td>
-                    <td className={`p-4 text-right font-black ${isIn ? 'text-green-600' : 'text-red-600'}`}>
-                      {isIn ? '+' : '-'}{log.quantity} <span className="text-xs font-bold text-gray-400">{rm?.unit}</span>
-                    </td>
-                    <td className="p-4 text-gray-600">{log.description}</td>
-                  </tr>
-                );
-              })}
-              {rawMaterialLogs.length === 0 && (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-400">Belum ada riwayat mutasi bahan baku.</td></tr>
-              )}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[500px]">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-montserrat text-sm">
+                  <th className="p-4 font-semibold">Tanggal</th>
+                  <th className="p-4 font-semibold">Bahan Baku</th>
+                  <th className="p-4 font-semibold text-center">Tipe</th>
+                  <th className="p-4 font-semibold text-right">Jumlah</th>
+                  <th className="p-4 font-semibold">Keterangan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rawMaterialLogs.map(log => {
+                  const rm = rawMaterials.find(r => r.id === log.rawMaterialId);
+                  const isIn = log.type === "in";
+                  return (
+                    <tr key={log.id} className="hover:bg-gray-50/50 transition-colors text-sm">
+                      <td className="p-4 text-gray-500 font-medium">{log.date}</td>
+                      <td className="p-4 font-bold text-gray-800">{rm?.name}</td>
+                      <td className="p-4 text-center">
+                        <div className={`inline-flex items-center justify-center p-1.5 rounded-lg ${isIn ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                          {isIn ? <ArrowDownToLine size={16} /> : <ArrowUpFromLine size={16} />}
+                        </div>
+                      </td>
+                      <td className={`p-4 text-right font-black ${isIn ? 'text-green-600' : 'text-red-600'}`}>
+                        {isIn ? '+' : '-'}{log.quantity} <span className="text-xs font-bold text-gray-400">{rm?.unit}</span>
+                      </td>
+                      <td className="p-4 text-gray-600">{log.description}</td>
+                    </tr>
+                  );
+                })}
+                {rawMaterialLogs.length === 0 && (
+                  <tr><td colSpan={5} className="p-8 text-center text-gray-400">Belum ada riwayat mutasi bahan baku.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

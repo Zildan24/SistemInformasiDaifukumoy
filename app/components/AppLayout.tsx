@@ -26,6 +26,7 @@ import { SignInButton, SignUpButton, Show, UserButton } from '@clerk/nextjs';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const { preOrders } = useData();
@@ -93,48 +94,70 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const currentBanner = bannerData[pathname];
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-gray-50 overflow-hidden relative">
+      {/* Backdrop Overlay for Mobile Sidebar */}
+      {isMobileOpen && (
+        <div 
+          onClick={() => setIsMobileOpen(false)}
+          className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300"
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`bg-white border-r border-gray-100 transition-all duration-300 ${isSidebarOpen ? "w-64" : "w-20"} flex flex-col`}>
-        <div className={`h-16 flex items-center ${isSidebarOpen ? "justify-between px-4" : "justify-center"} border-b border-gray-100`}>
-          {isSidebarOpen && (
-            <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="Daifukumoy Logo" className="h-[30px] w-auto object-contain drop-shadow-sm" />
-              <span className="text-xl font-quicksand font-bold text-primary">Daifukumoy</span>
-            </div>
-          )}
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg hover:bg-accent/50 text-secondary">
+      <aside className={`bg-white border-r border-gray-100 flex flex-col fixed inset-y-0 left-0 z-50 w-64 transition-all duration-300 ease-in-out transform ${
+        isMobileOpen ? "translate-x-0" : "-translate-x-full"
+      } md:relative md:translate-x-0 ${isSidebarOpen ? "md:w-64" : "md:w-20"}`}>
+        <div className={`h-16 flex items-center justify-between px-4 border-b border-gray-100 shrink-0`}>
+          <div className={`flex items-center gap-2 transition-all duration-300 ${isSidebarOpen ? "opacity-100 max-w-full" : "md:opacity-0 md:max-w-0 md:hidden"}`}>
+            <img src="/logo.png" alt="Daifukumoy Logo" className="h-[30px] w-auto object-contain drop-shadow-sm" />
+            <span className="text-xl font-quicksand font-bold text-primary">Daifukumoy</span>
+          </div>
+          <button 
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+            className="p-2 rounded-lg hover:bg-accent/50 text-secondary md:block hidden"
+          >
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+          <button 
+            onClick={() => setIsMobileOpen(false)} 
+            className="p-2 rounded-lg hover:bg-accent/50 text-secondary md:hidden block"
+          >
+            <X size={20} />
           </button>
         </div>
         
-        <div className="p-4 border-b border-gray-50 flex items-center gap-3">
+        <div className="p-4 border-b border-gray-50 flex items-center gap-3 shrink-0">
           <div className="flex-shrink-0">
             <UserButton />
           </div>
-          {isSidebarOpen && (
-            <div className="overflow-hidden">
-              <p className="font-bold text-gray-800 truncate">{currentUser.name}</p>
-              <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
-            </div>
-          )}
+          <div className={`overflow-hidden transition-all duration-300 ${isSidebarOpen ? "opacity-100 max-w-full" : "md:opacity-0 md:max-w-0 md:hidden"}`}>
+            <p className="font-bold text-gray-800 truncate">{currentUser.name}</p>
+            <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
+          </div>
         </div>
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             return (
-              <Link key={item.name} href={item.href}
+              <Link 
+                key={item.name} 
+                href={item.href}
+                onClick={() => setIsMobileOpen(false)}
                 className={`flex items-center space-x-3 p-3 rounded-xl transition-all ${
                   isActive ? "bg-primary text-white shadow-md shadow-primary/30" : "text-gray-500 hover:bg-accent/30 hover:text-primary"
                 }`}
               >
                 {item.icon}
-                {isSidebarOpen && (
-                  <span className="flex-1 font-montserrat font-semibold">{item.name}</span>
-                )}
-                {isSidebarOpen && item.badge && (
-                  <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                <span className={`flex-1 font-montserrat font-semibold transition-all duration-300 ${
+                  isSidebarOpen ? "opacity-100 max-w-full" : "md:opacity-0 md:max-w-0 md:hidden"
+                }`}>
+                  {item.name}
+                </span>
+                {item.badge && (
+                  <span className={`bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full transition-all duration-300 ${
+                    isSidebarOpen ? "opacity-100" : "md:opacity-0 md:hidden"
+                  }`}>
                     {item.badge}
                   </span>
                 )}
@@ -143,13 +166,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-gray-100">
+        <div className="p-4 border-t border-gray-100 shrink-0">
           <button 
             onClick={logout}
-            className={`w-full flex items-center ${isSidebarOpen ? "justify-start px-4" : "justify-center"} py-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors font-medium`}
+            className={`w-full flex items-center ${isSidebarOpen ? "justify-start px-4" : "md:justify-center justify-start px-4"} py-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors font-medium`}
           >
-            <img src="/logout.png" alt="logout" className={`h-5 w-auto object-contain ${isSidebarOpen ? "mr-3" : ""}`} />
-            {isSidebarOpen && "Keluar"}
+            <img src="/logout.png" alt="logout" className={`h-5 w-auto object-contain ${isSidebarOpen ? "mr-3" : "md:mr-0 mr-3"}`} />
+            <span className={`transition-all duration-300 ${isSidebarOpen ? "opacity-100 max-w-full" : "md:opacity-0 md:max-w-0 md:hidden"}`}>
+              Keluar
+            </span>
           </button>
         </div>
       </aside>
@@ -157,7 +182,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Topbar */}
-        <header className="min-h-[4rem] bg-primary text-white shadow-md flex items-center justify-between px-6 z-20 py-3 relative overflow-hidden">
+        <header className="min-h-[4rem] bg-primary text-white shadow-md flex items-center justify-between px-4 md:px-6 z-20 py-3 relative overflow-hidden">
           {/* Mascot Image Decorator */}
           <img 
             src="/trio.png" 
@@ -165,8 +190,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             className="absolute top-1/2 -translate-y-1/2 right-6 h-8 md:h-9 w-auto object-contain opacity-95 drop-shadow-md z-0 hidden md:block"
           />
 
-          <div className="flex items-center gap-6 flex-1 overflow-hidden relative z-10">
-            <h1 className="text-2xl font-quicksand font-bold shrink-0 text-white">
+          <div className="flex items-center gap-4 md:gap-6 flex-1 overflow-hidden relative z-10">
+            <button 
+              onClick={() => setIsMobileOpen(true)}
+              className="p-2 rounded-lg hover:bg-white/20 text-white md:hidden shrink-0"
+              aria-label="Open Sidebar"
+            >
+              <Menu size={24} />
+            </button>
+
+            <h1 className="text-xl md:text-2xl font-quicksand font-bold shrink-0 text-white">
               {navItems.find(item => item.href === pathname)?.name || "Dashboard"}
             </h1>
             
@@ -179,13 +212,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </p>
               </div>
             )}
-            
-
           </div>
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto p-6 bg-slate-50">
+        <main className="flex-1 overflow-auto p-4 md:p-6 bg-slate-50">
           <div className="max-w-6xl mx-auto">
             {children}
           </div>
