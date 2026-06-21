@@ -270,12 +270,12 @@ export default function ResellerCatalogPage() {
       
       {/* Banner Carousel */}
       {activeBanners.length > 0 && (
-        <div className="relative w-full h-48 md:h-64 rounded-3xl overflow-hidden mb-8 shadow-md group">
+        <div className="relative w-full aspect-[2.5/1] md:aspect-auto md:h-64 rounded-3xl overflow-hidden mb-8 shadow-md group bg-white">
           {activeBanners.map((banner, index) => {
             const Content = () => (
-              <>
-                <img src={banner.imageUrl} alt={banner.title} className="absolute inset-0 w-full h-full object-cover" />
-              </>
+              <div className="w-full h-full bg-white flex items-center justify-center">
+                <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-contain" />
+              </div>
             );
 
             return (
@@ -310,7 +310,7 @@ export default function ResellerCatalogPage() {
 
 
       {/* Filter & Search Bar */}
-      <div className="sticky -top-6 z-40 bg-white/95 backdrop-blur-md p-4 rounded-b-3xl shadow-md border-b border-gray-100 flex flex-col md:flex-row items-center gap-4 mb-8 transition-all -mx-6 px-6">
+      <div className="sticky -top-6 z-40 bg-white/95 backdrop-blur-md p-4 rounded-b-3xl shadow-md border-b border-gray-100 flex flex-col md:flex-row items-center gap-4 mb-8 transition-all -mx-4 px-4 sm:-mx-6 sm:px-6">
         <div className="flex bg-gray-50 p-1.5 rounded-2xl border border-gray-100 w-full md:w-auto overflow-x-auto no-scrollbar">
           <button 
             onClick={() => setCategoryFilter("all")} 
@@ -341,25 +341,35 @@ export default function ResellerCatalogPage() {
       </div>
 
       {/* Catalog Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-24">
+      <div className="grid grid-cols-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-6 pb-24">
         {filteredProducts.map(product => (
-          <div key={product.id} className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col">
+          <div key={product.id} className="bg-white rounded-2xl sm:rounded-[32px] border border-gray-100 shadow-sm overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col relative">
             <div className="aspect-square bg-gray-50 flex items-center justify-center relative overflow-hidden group-hover:bg-primary/5 transition-colors">
               {product.imageUrl ? (
                 <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
               ) : (
-                <ShoppingCart size={48} className="text-gray-200 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-500" />
+                <ShoppingCart className="text-gray-200 w-8 h-8 sm:w-12 sm:h-12 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-500" />
               )}
               {product.category && (
-                <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black text-gray-500 uppercase tracking-widest shadow-sm">
+                <div className="absolute top-1 left-1 sm:top-4 sm:left-4 bg-white/80 backdrop-blur-md px-1.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[8px] sm:text-[10px] font-black text-gray-500 uppercase tracking-wider sm:tracking-widest shadow-sm">
                   {product.category}
                 </div>
               )}
+              {/* Floating Add Button for Mobile */}
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openQuantityModal(product);
+                }}
+                className="absolute bottom-1.5 right-1.5 sm:hidden w-7 h-7 bg-primary text-white rounded-full shadow-md flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-10"
+              >
+                <Plus size={14} />
+              </button>
             </div>
-            <div className="p-6 flex-1 flex flex-col">
-              <h4 className="font-bold text-gray-800 text-lg line-clamp-1">{product.name}</h4>
-              <p className="text-primary font-black text-xl mt-1 mb-4">{formatCurrency(getProductPrice(product))}</p>
-              <div className="mt-auto">
+            <div className="p-2 sm:p-6 flex-1 flex flex-col">
+              <h4 className="font-bold text-gray-800 text-xs sm:text-lg line-clamp-1">{product.name}</h4>
+              <p className="text-primary font-black text-xs sm:text-xl mt-0.5 sm:mt-1 mb-1 sm:mb-4">{formatCurrency(getProductPrice(product))}</p>
+              <div className="mt-auto hidden sm:block">
                 <button 
                   onClick={() => openQuantityModal(product)}
                   className="w-full py-4 bg-gray-50 hover:bg-primary hover:text-white text-primary font-bold rounded-2xl transition-all border border-primary/10 hover:border-primary flex items-center justify-center gap-2 group-hover:shadow-lg group-hover:shadow-primary/20"
