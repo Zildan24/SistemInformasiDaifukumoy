@@ -5,9 +5,9 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function test() {
-  const { data, error } = await supabase.from('pre_orders').select('*').limit(1);
+  const { data, error } = await supabase.from('stock_opnames').select('*').limit(1);
   if (error) console.error("Error:", error);
-  else console.log("Columns of pre_orders:", data.length > 0 ? Object.keys(data[0]) : "No data");
+  else console.log("Columns of stock_opnames:", data.length > 0 ? Object.keys(data[0]) : "No data");
 }
 
 test();

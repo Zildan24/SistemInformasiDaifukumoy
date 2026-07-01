@@ -112,7 +112,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
            if (pathname === "/" || pathname === "/login" || pathname === "/sign-in" || pathname === "/sign-up") {
               if (roleLower === "admin" && pathname !== "/") { router.push("/"); isRedirecting = true; }
               else if (roleLower === "owner" && pathname !== "/") { router.push("/"); isRedirecting = true; }
-              else if (roleLower === "reseller" && pathname !== "/reseller") { router.push("/reseller"); isRedirecting = true; }
+              else if (roleLower === "reseller") { router.push("/reseller"); isRedirecting = true; }
            }
            
            if (!isRedirecting) {
@@ -134,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (pathname === "/" || pathname === "/login" || pathname === "/sign-in" || pathname === "/sign-up") {
               if (roleLower === "admin" && pathname !== "/") { router.push("/"); fallbackRedirecting = true; }
               else if (roleLower === "owner" && pathname !== "/") { router.push("/"); fallbackRedirecting = true; }
-              else if (roleLower === "reseller" && pathname !== "/reseller") { router.push("/reseller"); fallbackRedirecting = true; }
+              else if (roleLower === "reseller") { router.push("/reseller"); fallbackRedirecting = true; }
           }
         } else if (!["/profile"].includes(pathname) && !pathname.startsWith("/sign-in") && !pathname.startsWith("/sign-up")) {
           // Hanya pindahkan ke /sign-in jika belum ada clerkUser & bukan di route publik

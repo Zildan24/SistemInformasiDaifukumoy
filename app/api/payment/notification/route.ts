@@ -68,39 +68,23 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
 
-        // Trigger production plans automation for each matched order
-        const { data: channelData } = await supabase.from('channels').select('id').ilike('name', '%reseller%').single();
-        const resellerChannelId = channelData?.id;
-
-        if (resellerChannelId) {
-          for (const po of matchingOrders) {
-            try {
-              const { data: existingPlan } = await supabase.from('production_plans')
-                .select('*')
-                .eq('target_date', po.pickup_date)
-                .eq('product_id', po.product_id)
-                .eq('channel_id', resellerChannelId)
-                .single();
-
-              if (existingPlan) {
-                await supabase.from('production_plans')
-                  .update({ target_production_qty: existingPlan.target_production_qty + po.quantity })
-                  .eq('id', existingPlan.id);
-              } else {
-                await supabase.from('production_plans').insert([{
-                  target_date: po.pickup_date,
-                  product_id: po.product_id,
-                  channel_id: resellerChannelId,
-                  target_production_qty: po.quantity,
-                  avg_past_week_qty: 0,
-                  is_finalized: false
-                }]);
-              }
-            } catch (err) {
-              console.error("Gagal update production_plans via webhook:", err);
-            }
+        // Rule 1: Log each successful pre-order payment immediately in financial_records
+        for (const po of matchingOrders) {
+          try {
+            await supabase.from('financial_records').insert([{
+              type: 'Pemasukan',
+              category: 'Pre-Order Sales (Uang Muka/Kas)',
+              amount: po.total_amount,
+              recorded_at: po.created_at || new Date().toISOString(),
+              notes: `Pemasukan Pre-Order Sales (Uang Muka/Kas) - PO #${po.id}`
+            }]);
+          } catch (finErr) {
+            console.error("Gagal mencatat transaksi keuangan di webhook:", finErr);
           }
         }
+
+        // Rule 2: Run JIT Production planning sync
+        await syncJITProductionPlanning(supabase);
 
         console.log(`Successfully updated orders ${orderIdsToUpdate.join(', ')} to Pesanan Diterima via webhook.`);
       }
@@ -110,5 +94,67 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error("Webhook notification error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+async function syncJITProductionPlanning(supabase: any) {
+  try {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    const { data: channelData } = await supabase.from('channels').select('id').ilike('name', '%reseller%').single();
+    if (!channelData) return;
+    const resellerChannelId = channelData.id;
+
+    // Get all products to initialize aggregates
+    const { data: productsData } = await supabase.from('products').select('id');
+    if (!productsData) return;
+
+    // Query pre-orders for tomorrow
+    const { data: pos } = await supabase.from('pre_orders')
+      .select('product_id, quantity, status')
+      .eq('pickup_date', tomorrowStr);
+
+    const aggregates: Record<number, number> = {};
+    productsData.forEach((p: any) => {
+      aggregates[p.id] = 0;
+    });
+
+    if (pos) {
+      pos.forEach((po: any) => {
+        const statusLower = po.status.toLowerCase();
+        if (statusLower === 'pesanan diterima') {
+          const pid = Number(po.product_id);
+          aggregates[pid] = (aggregates[pid] || 0) + (po.quantity || 0);
+        }
+      });
+    }
+
+    // Delete existing reseller plans for tomorrow
+    await supabase.from('production_plans').delete()
+      .eq('target_date', tomorrowStr)
+      .eq('channel_id', resellerChannelId)
+      .is('location_id', null);
+
+    // Insert new plans
+    const plansToInsert = Object.keys(aggregates).map(pidStr => {
+      const pid = Number(pidStr);
+      return {
+        target_date: tomorrowStr,
+        product_id: pid,
+        channel_id: resellerChannelId,
+        location_id: null,
+        avg_past_week_qty: 0,
+        target_production_qty: aggregates[pid],
+        is_finalized: false
+      };
+    });
+
+    if (plansToInsert.length > 0) {
+      await supabase.from('production_plans').insert(plansToInsert);
+    }
+  } catch (err) {
+    console.error("Gagal sync JIT production plans:", err);
   }
 }

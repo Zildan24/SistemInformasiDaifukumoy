@@ -121,6 +121,7 @@ type DataContextType = {
   // Local/Mock methods for non-migrated features
   addGlobalStockLog: (log: Omit<GlobalStockLog, "id">) => void;
   saveOpname: (logId: string | undefined, date: string, productId: string, canal: string, subLocation: string, sold: number, realWaste: number, reusableWaste: number, assigned: number) => Promise<void>;
+  saveOpnamesBatch: (batchData: any[]) => Promise<void>;
   saveProductionPlans: (plans: Omit<ProductionPlan, "id" | "created_at">[]) => Promise<void>;
   refreshData: () => Promise<void>;
 };
@@ -537,36 +538,68 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const triggerProductionPlanAutomation = async (productId: number, pickupDate: string, quantity: number) => {
+  const syncJITProductionPlanning = async () => {
     try {
+      const tomorrowStr = format(addDays(new Date(), 1), "yyyy-MM-dd");
+      
       const { data: channelData } = await supabase.from('channels').select('id').ilike('name', '%reseller%').single();
-      const resellerChannelId = channelData?.id;
+      if (!channelData) return;
+      const resellerChannelId = channelData.id;
 
-      if (resellerChannelId) {
-        const { data: existingPlan } = await supabase.from('production_plans')
-          .select('*')
-          .eq('target_date', pickupDate)
-          .eq('product_id', productId)
-          .eq('channel_id', resellerChannelId)
-          .single();
+      // Get all products to initialize aggregates
+      const { data: productsData } = await supabase.from('products').select('id');
+      if (!productsData) return;
 
-        if (existingPlan) {
-          await supabase.from('production_plans')
-            .update({ target_production_qty: existingPlan.target_production_qty + quantity })
-            .eq('id', existingPlan.id);
-        } else {
-          await supabase.from('production_plans').insert([{
-            target_date: pickupDate,
-            product_id: productId,
-            channel_id: resellerChannelId,
-            target_production_qty: quantity,
-            avg_past_week_qty: 0,
-            is_finalized: false
-          }]);
-        }
+      // Query pre-orders for tomorrow
+      const { data: pos, error: poErr } = await supabase.from('pre_orders')
+        .select('product_id, quantity, status')
+        .eq('pickup_date', tomorrowStr);
+        
+      if (poErr) {
+        console.error("Error fetching preorders for JIT production planning:", poErr);
+        return;
+      }
+
+      const aggregates: Record<number, number> = {};
+      productsData.forEach(p => {
+        aggregates[parseInt(p.id)] = 0;
+      });
+
+      if (pos) {
+        pos.forEach(po => {
+          const statusLower = po.status.toLowerCase();
+          if (statusLower === 'pesanan diterima') {
+            const pid = Number(po.product_id);
+            aggregates[pid] = (aggregates[pid] || 0) + (po.quantity || 0);
+          }
+        });
+      }
+
+      // Delete existing reseller plans for tomorrow
+      await supabase.from('production_plans').delete()
+        .eq('target_date', tomorrowStr)
+        .eq('channel_id', resellerChannelId)
+        .is('location_id', null);
+
+      // Insert new plans
+      const plansToInsert = Object.keys(aggregates).map(pidStr => {
+        const pid = Number(pidStr);
+        return {
+          target_date: tomorrowStr,
+          product_id: pid,
+          channel_id: resellerChannelId,
+          location_id: null,
+          avg_past_week_qty: 0,
+          target_production_qty: aggregates[pid],
+          is_finalized: false
+        };
+      });
+
+      if (plansToInsert.length > 0) {
+        await supabase.from('production_plans').insert(plansToInsert);
       }
     } catch (err) {
-      console.error("Gagal update production_plans (Automasi 1):", err);
+      console.error("Gagal sync JIT production plans:", err);
     }
   };
 
@@ -606,9 +639,22 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       else if (retStatus === "selesai") localStatus = "selesai";
       else if (retStatus === "gagal") localStatus = "gagal";
 
-      // 1. Automasi 1: Menembak data ke production_plans saat Pesanan Diterima
+      // 1. Automasi 1 & Rule 1: Menembak data ke production_plans & financial_records saat Pesanan Diterima
       if (data.status === 'Pesanan Diterima') {
-        await triggerProductionPlanAutomation(data.product_id, data.pickup_date, data.quantity);
+        try {
+          await supabase.from('financial_records').insert([{
+            type: 'Pemasukan',
+            category: 'Pre-Order Sales (Uang Muka/Kas)',
+            amount: data.total_amount || (products.find(p => p.id === po.productId)?.price || 0) * po.quantity,
+            recorded_at: data.created_at || new Date().toISOString(),
+            notes: `Pemasukan Pre-Order Sales (Uang Muka/Kas) - PO #${data.id}`,
+            created_by: currentUser?.id
+          }]);
+        } catch (finErr) {
+          console.error("Gagal mencatat transaksi keuangan di addPreOrder:", finErr);
+        }
+
+        await syncJITProductionPlanning();
       }
 
       const newPo: PreOrder = {
@@ -691,72 +737,130 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       else if (retStatus === "selesai") localStatus = "selesai";
       else if (retStatus === "gagal") localStatus = "gagal";
 
-      // 1. Automasi 1: Menembak data ke production_plans saat Pesanan Diterima dari Menunggu Pembayaran
+      // Rule 1: Financial integration on payment success ('menunggu pembayaran' -> 'pesanan diterima')
       if (dbStatus === "Pesanan Diterima" && po.status === "menunggu pembayaran") {
-        await triggerProductionPlanAutomation(parseInt(po.productId), po.pickupDate, po.quantity);
+        try {
+          const product = products.find(p => p.id === po.productId);
+          const totalAmt = data.total_amount || (product?.price || 0) * po.quantity;
+          
+          await supabase.from('financial_records').insert([{
+            type: 'Pemasukan',
+            category: 'Pre-Order Sales (Uang Muka/Kas)',
+            amount: totalAmt,
+            recorded_at: data.created_at || po.createdAt || new Date().toISOString(),
+            notes: `Pemasukan Pre-Order Sales (Uang Muka/Kas) - PO #${poId}`,
+            created_by: currentUser?.id
+          }]);
+        } catch (finErr) {
+          console.error("Gagal mencatat transaksi keuangan di updatePreOrderStatus:", finErr);
+        }
       }
 
-      // 2. Automasi 2: "Siap Diambil" -> Moci yang selesai dibuat menambah saldo global_stocks
-      if (status === "siap diambil" && po.status !== "siap diambil" && po.status !== "selesai") {
+      // Rule 2: Run JIT Production planning sync (updates reseller target_production_qty for tomorrow)
+      await syncJITProductionPlanning();
+
+      // Rule 3: Automated Stock Mutation on Ready Status ('sedang dibuat' or 'siap diambil' from not ready)
+      const isTransitioningToReady = (status === "sedang dibuat" || status === "siap diambil");
+      const wasNotAlreadyReady = (po.status !== "sedang dibuat" && po.status !== "siap diambil" && po.status !== "selesai");
+      
+      if (isTransitioningToReady && wasNotAlreadyReady) {
          try {
+           const { data: channelData } = await supabase.from('channels').select('id').ilike('name', '%reseller%').single();
+           const resellerChannelId = channelData?.id;
+           let destLocId: number | null = null;
+           
+           if (resellerChannelId) {
+             const { data: locData } = await supabase.from('locations').select('id').eq('channel_id', resellerChannelId).limit(1);
+             if (locData && locData.length > 0) {
+               destLocId = locData[0].id;
+             } else {
+               const { data: newLoc } = await supabase.from('locations').insert([{
+                 channel_id: resellerChannelId,
+                 name: 'Reseller Center',
+                 address: 'Pusat Reseller',
+                 status: 'Aktif'
+               }]).select('id').single();
+               if (newLoc) destLocId = newLoc.id;
+             }
+           }
+
+           // Log the mutation (type: 'Kirim ke Cabang')
+           await supabase.from('stock_mutations').insert([{
+             product_id: parseInt(po.productId),
+             type: 'Kirim ke Cabang',
+             destination_location_id: destLocId,
+             qty: po.quantity,
+             notes: `Otomatisasi PO ${po.resellerName} (Status: ${status})`,
+             created_by: currentUser?.id
+           }]);
+
+           // Deduct the quantity from global_stocks.qty_gudang
            const { data: stockData } = await supabase.from('global_stocks').select('qty_gudang').eq('product_id', po.productId).single();
            const currentQty = stockData?.qty_gudang || 0;
-           await updateStock(po.productId, currentQty + po.quantity);
-         } catch(err) {
-           console.error("Gagal update global_stocks (Automasi 2):", err);
+           await updateStock(po.productId, Math.max(0, currentQty - po.quantity));
+         } catch (err) {
+           console.error("Gagal update global_stocks & mutasi (Rule 3):", err);
          }
       }
 
-      // 3. Automasi 3: "Selesai" -> Mutasi Stok, Stok Opname, Pencatatan Keuangan
+      // Rule 4: Semi-Automated Stock Opname Recommendations on 'selesai'
       if (status === "selesai" && po.status !== "selesai") {
          try {
            const { data: channelData } = await supabase.from('channels').select('id').ilike('name', '%reseller%').single();
            const resellerChannelId = channelData?.id;
-
-           // Automasi 3.1: Mutasi Stok (Kurangi global_stocks)
-           const { data: stockData } = await supabase.from('global_stocks').select('qty_gudang').eq('product_id', po.productId).single();
-           const currentQty = stockData?.qty_gudang || 0;
+           let destLocId: number | null = null;
            
-           await supabase.from('stock_mutations').insert([{
-             product_id: parseInt(po.productId),
-             type: 'Kirim ke Cabang/Reseller',
-             qty: po.quantity,
-             notes: `Otomatisasi PO ${po.resellerName}`,
-             created_by: currentUser?.id
-           }]);
-
-           await updateStock(po.productId, Math.max(0, currentQty - po.quantity));
-
-           // Automasi 3.2: Stok Opname Otomatis
-           const product = products.find(p => p.id === po.productId);
            if (resellerChannelId) {
-             await supabase.from('stock_opnames').insert([{
-               date: po.pickupDate,
-               product_id: parseInt(po.productId),
-               channel_id: resellerChannelId,
-               stock_assigned: po.quantity, // qty_dikirim = PO qty
-               sold_qty: po.quantity,       // qty_terjual = PO qty
-               real_waste: 0,
-               reusable_waste: 0,
-               hpp_snapshot: product?.hpp || 0,
-               price_snapshot: product?.price || 0,
-               created_by: currentUser?.id
-             }]);
+             const { data: locData } = await supabase.from('locations').select('id').eq('channel_id', resellerChannelId).limit(1);
+             if (locData && locData.length > 0) {
+               destLocId = locData[0].id;
+             } else {
+               const { data: newLoc } = await supabase.from('locations').insert([{
+                 channel_id: resellerChannelId,
+                 name: 'Reseller Center',
+                 address: 'Pusat Reseller',
+                 status: 'Aktif'
+               }]).select('id').single();
+               if (newLoc) destLocId = newLoc.id;
+             }
            }
 
-           // Automasi 3.3: Pencatatan Keuangan
-           const totalAmount = (product?.price || 0) * po.quantity;
-           await supabase.from('financial_records').insert([{
-             type: 'Pemasukan',
-             amount: totalAmount,
-             category: 'Penjualan',
-             recorded_at: new Date().toISOString(),
-             notes: `Penjualan PO Reseller - ${po.resellerName}`,
-             created_by: currentUser?.id
-           }]);
+           if (resellerChannelId && destLocId) {
+             const { data: existingOpname } = await supabase.from('stock_opnames')
+               .select('*')
+               .eq('date', po.pickupDate)
+               .eq('product_id', parseInt(po.productId))
+               .eq('channel_id', resellerChannelId)
+               .eq('location_id', destLocId)
+               .maybeSingle();
 
+             const product = products.find(p => p.id === po.productId);
+
+             if (existingOpname) {
+               await supabase.from('stock_opnames')
+                 .update({
+                   stock_assigned: (existingOpname.stock_assigned || 0) + po.quantity,
+                   sold_qty: (existingOpname.sold_qty || 0) + po.quantity
+                 })
+                 .eq('id', existingOpname.id);
+             } else {
+               await supabase.from('stock_opnames').insert([{
+                 date: po.pickupDate,
+                 product_id: parseInt(po.productId),
+                 channel_id: resellerChannelId,
+                 location_id: destLocId,
+                 stock_assigned: po.quantity,
+                 sold_qty: po.quantity,
+                 real_waste: 0,
+                 reusable_waste: 0,
+                 hpp_snapshot: product?.hpp || 0,
+                 price_snapshot: product?.price || 0,
+                 created_by: currentUser?.id
+               }]);
+             }
+           }
          } catch (err) {
-           console.error("Gagal menjalankan Automasi 3:", err);
+           console.error("Gagal pre-fill stock_opnames (Rule 4):", err);
          }
       }
 
@@ -769,7 +873,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
           adminNotes: data.admin_notes || p.adminNotes
         } : p));
         
-        if (!skipRefresh && (status === 'selesai' || status === 'siap diambil')) {
+        if (!skipRefresh && (status === 'selesai' || status === 'siap diambil' || status === 'sedang dibuat')) {
           refreshData();
         }
       }
@@ -1092,6 +1196,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     
     // Auto-refresh untuk menarik ulang semua data transaksi
     refreshData();
+  };
+
+  const saveOpname = async (logId: string | undefined, date: string, productId: string, canal: string, subLocation: string, sold: number, realWaste: number, reusableWaste: number, assigned: number) => {
+    await saveOpnamesBatch([{
+      logId, date, productId, canal, subLocation, sold, realWaste, reusableWaste, assigned
+    }]);
   };  
 
   // Promo Banners CRUD
@@ -1206,7 +1316,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       addTransaction, updateStock, addPreOrder, updatePreOrderStatus,
       addProduct, updateProduct, deleteProduct,
       addChannel, updateChannel, deleteChannel, addLocation, updateLocation, deleteLocation,
-      addGlobalStockLog, addStockTransfer, saveOpnamesBatch, saveProductionPlans,
+      addGlobalStockLog, addStockTransfer, saveOpnamesBatch, saveProductionPlans, saveOpname,
       addRawMaterial, updateRawMaterial, deleteRawMaterial, addRawMaterialLog,
       fetchUserProfile, updateUserProfile,
       promoBanners, addPromoBanner, updatePromoBanner, deletePromoBanner,

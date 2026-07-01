@@ -58,6 +58,19 @@ export default function PlanningPage() {
     };
   };
 
+  const tomorrowStr = format(tomorrow, "yyyy-MM-dd");
+  
+  const resellerTargets = useMemo(() => {
+    const rt: Record<string, number> = {};
+    preOrders.forEach(po => {
+      // Hanya hitung PO yang tanggal ambilnya = target date (besok) dan berstatus 'pesanan diterima'
+      if (po.pickupDate === tomorrowStr && po.status === 'pesanan diterima') {
+        rt[po.productId] = (rt[po.productId] || 0) + po.quantity;
+      }
+    });
+    return rt;
+  }, [preOrders, tomorrowStr]);
+
   // --- Algoritma Heuristik (Day-of-the-Week & SMA) ---
   const predictions = useMemo(() => {
     const results: Record<string, { average: number, recommendation: number, trendPct: number }> = {};
@@ -86,6 +99,10 @@ export default function PlanningPage() {
           }
         });
 
+        // Tambahkan target reseller ke Total Target Produksi
+        const resellerQty = resellerTargets[p.id] || 0;
+        totalRec += resellerQty;
+
         results[p.id] = { average: totalAvg, recommendation: totalRec, trendPct: 0 };
       });
       return results;
@@ -104,22 +121,7 @@ export default function PlanningPage() {
     });
 
     return results;
-  }, [products, productionLogs, tomorrow, selectedCanal, selectedSubLocation, channels, locations]);
-
-  const tomorrowStr = format(tomorrow, "yyyy-MM-dd");
-  
-  const resellerTargets = useMemo(() => {
-    if (selectedCanal !== "Reseller") return {};
-    
-    const rt: Record<string, number> = {};
-    preOrders.forEach(po => {
-      // Hanya hitung PO yang tanggal ambilnya = target date (besok) dan bukan berstatus 'menunggu pembayaran'
-      if (po.pickupDate === tomorrowStr && po.status !== 'menunggu pembayaran' && po.status !== 'gagal') {
-        rt[po.productId] = (rt[po.productId] || 0) + po.quantity;
-      }
-    });
-    return rt;
-  }, [preOrders, tomorrowStr, selectedCanal]);
+  }, [products, productionLogs, tomorrow, selectedCanal, selectedSubLocation, channels, locations, resellerTargets]);
   
   const reusableWasteMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -307,7 +309,9 @@ export default function PlanningPage() {
                     <th scope="col" className="px-6 py-5 font-bold tracking-wider">Varian Produk</th>
                     {selectedCanal !== "Reseller" && (
                       <>
-                        <th scope="col" className="px-6 py-5 font-bold tracking-wider text-center">Avg Hari</th>
+                        {selectedCanal !== "Semua" && (
+                          <th scope="col" className="px-6 py-5 font-bold tracking-wider text-center">Avg Hari</th>
+                        )}
                         {selectedCanal !== "Semua" && (
                           <th scope="col" className="px-6 py-5 font-bold tracking-wider text-center text-pink-500">Reusable Waste</th>
                         )}
@@ -333,7 +337,9 @@ export default function PlanningPage() {
                         <td className="px-6 py-5 font-bold text-gray-800 text-base">{p.name}</td>
                         {selectedCanal !== "Reseller" && (
                           <>
-                            <td className="px-6 py-5 text-center font-medium text-gray-600">{data?.average || 0}</td>
+                            {selectedCanal !== "Semua" && (
+                              <td className="px-6 py-5 text-center font-medium text-gray-600">{data?.average || 0}</td>
+                            )}
                             
                             {selectedCanal !== "Semua" && (
                               <td className="px-6 py-5 text-center font-bold text-pink-500">{availableReusable}</td>

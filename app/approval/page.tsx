@@ -5,12 +5,27 @@ import { useData } from "../context/DataContext";
 import { ClipboardCheck, Check, Box, Clock } from "lucide-react";
 import { confirmAction, showSuccess } from "../utils/alert";
 
+const FILTER_LABELS: Record<string, string> = {
+  "all": "Semua",
+  "menunggu pembayaran": "Belum Bayar",
+  "pesanan diterima": "Diterima",
+  "sedang dibuat": "Dibuat",
+  "siap diambil": "Siap Ambil",
+  "selesai": "Selesai",
+  "gagal": "Gagal",
+};
+
 export default function ApprovalCenterPage() {
   const { preOrders, products, updatePreOrderStatus, refreshData } = useData();
   const [filter, setFilter] = useState<"all" | "menunggu pembayaran" | "pesanan diterima" | "sedang dibuat" | "siap diambil" | "selesai" | "gagal">("pesanan diterima");
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
 
-  const filteredPOs = preOrders.filter(po => filter === "all" || po.status === filter);
+  const filteredPOs = preOrders.filter(po => {
+    if (filter === "all") {
+      return ["pesanan diterima", "sedang dibuat", "siap diambil", "selesai"].includes(po.status);
+    }
+    return po.status === filter;
+  });
 
   // Calculate group counts for each status
   const groupCounts = useMemo(() => {
@@ -28,7 +43,7 @@ export default function ApprovalCenterPage() {
       "selesai": statuses.filter(s => s === "selesai").length,
       "menunggu pembayaran": statuses.filter(s => s === "menunggu pembayaran").length,
       "gagal": statuses.filter(s => s === "gagal").length,
-      "all": statuses.length,
+      "all": statuses.filter(s => ["pesanan diterima", "sedang dibuat", "siap diambil", "selesai"].includes(s)).length,
     };
   }, [preOrders]);
   // Group POs by reseller, pickupDate, and status
@@ -113,24 +128,24 @@ export default function ApprovalCenterPage() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
       {/* Header Info */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-row items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <ClipboardCheck className="text-primary" /> Kelola PO
+          <h2 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
+            <ClipboardCheck className="text-primary shrink-0" /> <span className="hidden sm:inline">Kelola PO</span>
           </h2>
         </div>
 
-        <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-200 overflow-x-auto no-scrollbar">
-          {(["pesanan diterima", "sedang dibuat", "siap diambil", "selesai", "menunggu pembayaran", "gagal", "all"] as const).map(f => (
+        <div className="flex bg-gray-50 p-0.5 rounded-xl border border-gray-200 overflow-x-auto no-scrollbar gap-0.5">
+          {(["pesanan diterima", "sedang dibuat", "siap diambil", "selesai", "all"] as const).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium capitalize whitespace-nowrap transition-all ${
+              className={`flex items-center gap-1 px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-[10px] md:text-xs font-semibold whitespace-nowrap transition-all ${
                 filter === f ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-800"
               }`}
             >
-              <span>{f === "all" ? "Semua" : f}</span>
-              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${filter === f ? 'bg-primary/10 text-primary' : 'bg-gray-200 text-gray-500'}`}>
+              <span>{FILTER_LABELS[f]}</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[9px] md:text-[10px] font-bold ${filter === f ? 'bg-primary/10 text-primary' : 'bg-gray-200 text-gray-500'}`}>
                 {groupCounts[f]}
               </span>
             </button>

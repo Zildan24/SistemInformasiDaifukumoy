@@ -269,7 +269,7 @@ export default function ResellerHistoryPage() {
     }));
 
     const currentResellerId = currentUser?.id || '';
-    const currentResellerName = currentUser?.user_metadata?.full_name || currentUser?.email || 'Reseller';
+    const currentResellerName = currentUser?.name || currentUser?.email || 'Reseller';
     const orderId = `PO-${Date.now()}-${currentResellerId.substring(0, 8)}`;
 
     try {

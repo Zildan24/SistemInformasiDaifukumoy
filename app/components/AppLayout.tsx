@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { 
@@ -33,6 +33,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { currentUser, logout, isLoading } = useAuth();
   const [isMounted, setIsMounted] = useState(false);
 
+  const pendingPOs = useMemo(() => {
+    const groups = new Set();
+    preOrders.forEach(po => {
+      if (po.status === "pesanan diterima") {
+        groups.add(`${po.resellerId}_${po.pickupDate}`);
+      }
+    });
+    return groups.size;
+  }, [preOrders]);
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -49,10 +59,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (pathname === "/login" || pathname === "/sign-in" || pathname === "/sign-up" || !currentUser) {
     return <>{children}</>;
   }
-
-  const pendingPOs = preOrders.filter(po => po.status === "pesanan diterima").length;
   const allNavItems = [
     { name: "Dashboard", href: "/", icon: <LayoutDashboard size={20} />, roles: ["owner", "admin"] },
+    { name: "Analitik & Tren", href: "/analytics", icon: <BarChart3 size={20} />, roles: ["owner"] },
     { name: "Kelola PO", href: "/approval", icon: <ClipboardCheck size={20} />, badge: pendingPOs > 0 ? pendingPOs : null, roles: ["admin"] },
     { name: "Stock Global", href: "/global-stock", icon: <Package size={20} />, roles: ["admin"] },
     { name: "Mutasi Stok", href: "/stock-transfer", icon: <Share2 size={20} />, roles: ["admin"] },

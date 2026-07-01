@@ -93,18 +93,22 @@ export default function ReportsPage() {
     lList.forEach(log => {
       const product = products.find(p => p.id === log.productId);
       const hpp = log.hppSnapshot ?? (product?.hpp || 0);
-      const sisa = Math.max(0, log.morningProduction - log.soldQuantity);
       
       totalCogs += log.soldQuantity * hpp;
-      wasteCost += sisa * hpp;
-      totalWasteUnits += sisa;
+      wasteCost += (log.realWaste || 0) * hpp;
+      totalWasteUnits += (log.realWaste || 0);
     });
 
     const variableCosts = totalCogs; // Pure COGS
     const totalExpense = expense + wasteCost + variableCosts; // Total biaya adalah operasional + waste + cogs
-    const grossProfit = income - totalExpense;
-    const zakat = grossProfit > 0 ? grossProfit * 0.025 : 0;
-    const netProfit = grossProfit - zakat;
+    
+    const opnameGrossProfit = income - variableCosts; // sold_qty * (price_snapshot - hpp_snapshot)
+    const grossProfit = opnameGrossProfit;
+    const opnameNetProfit = opnameGrossProfit - wasteCost; // Gross Profit - (real_waste * hpp_snapshot)
+    const businessNetProfit = opnameNetProfit - expense; // Net Profit - operational expenses
+    
+    const zakat = businessNetProfit > 0 ? businessNetProfit * 0.025 : 0;
+    const netProfit = businessNetProfit - zakat;
 
     // Income by Kanal (Dynamic)
     const canalStats: Record<string, { total: number, vol: number, subLocations: Record<string, { total: number, vol: number }> }> = {};

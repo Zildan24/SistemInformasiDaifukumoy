@@ -159,7 +159,7 @@ export default function KeuanganPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Total Pemasukan Card */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4">
           <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-500 shrink-0">
@@ -182,19 +182,6 @@ export default function KeuanganPage() {
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Total Pengeluaran</p>
             <p className="text-xl font-bold text-slate-800 mt-0.5">
               {typeFilter === "income" ? "-" : formatCurrency(totalExpense)}
-            </p>
-          </div>
-        </div>
-
-        {/* Saldo Aktif / Selisih Card */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4">
-          <div className="p-4 rounded-2xl bg-blue-50 text-blue-500 shrink-0">
-            <Wallet size={24} />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Selisih (Net)</p>
-            <p className={`text-xl font-bold mt-0.5 ${typeFilter !== "all" ? "text-slate-800" : activeBalance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-              {typeFilter !== "all" ? "-" : formatCurrency(activeBalance)}
             </p>
           </div>
         </div>

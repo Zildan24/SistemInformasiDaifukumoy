@@ -268,6 +268,37 @@ export default function ResellerCatalogPage() {
   return (
     <div className="relative min-h-[80vh] animate-in fade-in slide-in-from-bottom-4 duration-500">
       
+      {/* Filter & Search Bar */}
+      <div className="sticky -top-6 z-40 bg-white/95 backdrop-blur-md p-4 rounded-b-3xl shadow-md border-b border-gray-100 flex flex-col md:flex-row items-center gap-4 mb-8 transition-all -mx-4 px-4 sm:-mx-6 sm:px-6">
+        <div className="flex bg-gray-50 p-1.5 rounded-2xl border border-gray-100 w-full md:w-auto overflow-x-auto no-scrollbar">
+          <button 
+            onClick={() => setCategoryFilter("all")} 
+            className={`px-5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${categoryFilter === "all" ? "bg-white text-primary shadow-md" : "text-gray-400"}`}
+          >
+            Semua
+          </button>
+          {categories.map(cat => (
+            <button 
+              key={cat} 
+              onClick={() => setCategoryFilter(cat)} 
+              className={`px-5 py-2 rounded-xl text-xs font-bold whitespace-nowrap capitalize transition-all ${categoryFilter === cat ? "bg-white text-primary shadow-md" : "text-gray-400"}`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+        <div className="relative flex-1 w-full">
+          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input 
+            type="text" 
+            placeholder="Cari produk favorit..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium focus:ring-4 focus:ring-primary/5 focus:border-primary outline-none transition-all"
+          />
+        </div>
+      </div>
+
       {/* Banner Carousel */}
       {activeBanners.length > 0 && (
         <div className="relative w-full aspect-[2.5/1] md:aspect-auto md:h-64 rounded-3xl overflow-hidden mb-8 shadow-md group bg-white">
@@ -306,39 +337,6 @@ export default function ResellerCatalogPage() {
           </div>
         </div>
       )}
-
-
-
-      {/* Filter & Search Bar */}
-      <div className="sticky -top-6 z-40 bg-white/95 backdrop-blur-md p-4 rounded-b-3xl shadow-md border-b border-gray-100 flex flex-col md:flex-row items-center gap-4 mb-8 transition-all -mx-4 px-4 sm:-mx-6 sm:px-6">
-        <div className="flex bg-gray-50 p-1.5 rounded-2xl border border-gray-100 w-full md:w-auto overflow-x-auto no-scrollbar">
-          <button 
-            onClick={() => setCategoryFilter("all")} 
-            className={`px-5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${categoryFilter === "all" ? "bg-white text-primary shadow-md" : "text-gray-400"}`}
-          >
-            Semua
-          </button>
-          {categories.map(cat => (
-            <button 
-              key={cat} 
-              onClick={() => setCategoryFilter(cat)} 
-              className={`px-5 py-2 rounded-xl text-xs font-bold whitespace-nowrap capitalize transition-all ${categoryFilter === cat ? "bg-white text-primary shadow-md" : "text-gray-400"}`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-        <div className="relative flex-1 w-full">
-          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input 
-            type="text" 
-            placeholder="Cari produk favorit..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium focus:ring-4 focus:ring-primary/5 focus:border-primary outline-none transition-all"
-          />
-        </div>
-      </div>
 
       {/* Catalog Grid */}
       <div className="grid grid-cols-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-6 pb-24">

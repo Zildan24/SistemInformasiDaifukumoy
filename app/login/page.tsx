@@ -71,7 +71,7 @@ export default function LoginPage() {
 
             {/* Main Action Button */}
             <button 
-              onClick={() => handleLogin(loginInput || "owner")}
+              onClick={() => handleLogin((loginInput as Role) || "owner")}
               className="w-full py-4 bg-[#9B2C2C] hover:bg-[#822424] text-white rounded-full font-black text-lg shadow-lg shadow-[#9B2C2C]/30 transition-all transform active:scale-95 mt-4"
             >
               Masuk ke Dunia Mochi

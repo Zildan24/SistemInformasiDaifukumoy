@@ -39,8 +39,9 @@ export default function RootLayout({
     <html
       lang="id"
       className={`${quicksand.variable} ${montserrat.variable} ${inter.variable} font-sans h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <Script src="https://app.sandbox.midtrans.com/snap/snap.js" data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY} strategy="beforeInteractive" />
         <ClerkProvider
           appearance={{

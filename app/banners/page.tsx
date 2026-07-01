@@ -46,11 +46,12 @@ export default function BannersPage() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string, name: string) => {
-    confirmAction(`Hapus banner "${name}"?`, "Banner ini tidak akan ditampilkan lagi.", async () => {
+  const handleDelete = async (id: string, name: string) => {
+    const isConfirmed = await confirmAction(`Hapus banner "${name}"?`, "Banner ini tidak akan ditampilkan lagi.");
+    if (isConfirmed) {
       await deletePromoBanner(id);
       showSuccess("Terhapus", "Banner telah dihapus.");
-    });
+    }
   };
 
   const handleToggleActive = async (banner: PromoBanner) => {
