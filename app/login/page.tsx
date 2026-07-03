@@ -8,9 +8,10 @@ export default function LoginPage() {
   const { login } = useAuth();
   const [activeTab, setActiveTab] = useState<"login" | "quick">("login");
   const [loginInput, setLoginInput] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleLogin = (role: Role) => {
-    login(role);
+    login(role, rememberMe);
   };
 
   return (
@@ -67,6 +68,21 @@ export default function LoginPage() {
                   className="w-full bg-[#FFF9FB] border-2 border-pink-50 rounded-full py-4 pl-12 pr-4 focus:bg-white focus:border-pink-200 outline-none transition-all font-bold text-gray-700 placeholder:text-pink-200"
                 />
               </div>
+            </div>
+
+            {/* Remember Me Checkbox */}
+            <div className="flex items-center justify-start px-4 mt-2">
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input 
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-pink-500 focus:ring-pink-500 accent-[#9B2C2C] cursor-pointer"
+                />
+                <span className="text-xs font-extrabold text-gray-400 group-hover:text-[#9B2C2C] transition-colors select-none">
+                  Ingat Saya
+                </span>
+              </label>
             </div>
 
             {/* Main Action Button */}

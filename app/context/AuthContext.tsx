@@ -19,7 +19,7 @@ type AuthContextType = {
   currentUser: User | null;
   isProfileComplete: boolean;
   isLoading: boolean;
-  login: (identifier: string) => Promise<void>;
+  login: (identifier: string, rememberMe?: boolean) => Promise<void>;
   logout: () => void;
   setIsProfileComplete: (status: boolean) => void;
   setCurrentUser: (user: User | null) => void;
@@ -45,6 +45,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!isLoaded) return; // Tunggu Clerk memuat sesi
 
       if (clerkUser) {
+        // Sync pending Google OAuth rememberMe state if any
+        const pendingRemember = localStorage.getItem("clerk_remember_me_pending");
+        if (pendingRemember === "true") {
+          localStorage.removeItem("clerk_remember_me_pending");
+          localStorage.setItem("clerk_remember_me", "true");
+          localStorage.setItem("clerk_session_expires_at", (Date.now() + 24 * 60 * 60 * 1000).toString());
+        }
+
+        // Check session expiration policy for Clerk
+        const isClerkRememberMe = localStorage.getItem("clerk_remember_me") === "true";
+        let shouldSignOutClerk = false;
+
+        if (isClerkRememberMe) {
+          const expiresAt = localStorage.getItem("clerk_session_expires_at");
+          if (expiresAt && Date.now() > parseInt(expiresAt, 10)) {
+            shouldSignOutClerk = true;
+          }
+        } else {
+          // If rememberMe was not checked, session expires when the browser/tab is closed.
+          // We check sessionStorage for clerk_session_active.
+          const isActive = sessionStorage.getItem("clerk_session_active") === "true";
+          if (!isActive) {
+            shouldSignOutClerk = true;
+          }
+        }
+
+        if (shouldSignOutClerk) {
+          localStorage.removeItem("clerk_remember_me");
+          localStorage.removeItem("clerk_session_expires_at");
+          sessionStorage.removeItem("clerk_session_active");
+          await signOut();
+          router.push("/sign-in");
+          setIsLoading(false);
+          return;
+        }
+
+        // Otherwise, mark the session as active in sessionStorage if not in rememberMe mode (so it persists for this browser session)
+        if (!isClerkRememberMe) {
+          sessionStorage.setItem("clerk_session_active", "true");
+        }
+
         let dbUserObj = currentUser;
         let dbProfileComplete = isProfileComplete;
         let needToFetch = true;
@@ -123,10 +164,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       } else {
         // Jika tidak login via Clerk, jalankan fallback manual
-        const savedUser = localStorage.getItem("daifukumoy_user");
-        let fallbackRedirecting = false;
+        let savedUser = localStorage.getItem("daifukumoy_user");
+        let parsed = null;
         if (savedUser) {
-          const parsed = JSON.parse(savedUser);
+          try {
+            parsed = JSON.parse(savedUser);
+            if (parsed && parsed.expires_at && Date.now() > parsed.expires_at) {
+              localStorage.removeItem("daifukumoy_user");
+              parsed = null;
+            }
+          } catch (e) {
+            localStorage.removeItem("daifukumoy_user");
+          }
+        }
+
+        if (!parsed) {
+          const sessionUser = sessionStorage.getItem("daifukumoy_user");
+          if (sessionUser) {
+            try {
+              parsed = JSON.parse(sessionUser);
+              if (parsed && parsed.expires_at && Date.now() > parsed.expires_at) {
+                sessionStorage.removeItem("daifukumoy_user");
+                parsed = null;
+              }
+            } catch (e) {
+              sessionStorage.removeItem("daifukumoy_user");
+            }
+          }
+        }
+
+        let fallbackRedirecting = false;
+        if (parsed) {
           setCurrentUser(parsed);
           setIsProfileComplete(!!parsed.phone_number);
           
@@ -136,7 +204,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               else if (roleLower === "owner" && pathname !== "/") { router.push("/"); fallbackRedirecting = true; }
               else if (roleLower === "reseller") { router.push("/reseller"); fallbackRedirecting = true; }
           }
-        } else if (!["/profile"].includes(pathname) && !pathname.startsWith("/sign-in") && !pathname.startsWith("/sign-up")) {
+        } else if (!["/profile", "/login", "/sso-callback"].includes(pathname) && !pathname.startsWith("/sign-in") && !pathname.startsWith("/sign-up") && !pathname.startsWith("/sso-callback")) {
           // Hanya pindahkan ke /sign-in jika belum ada clerkUser & bukan di route publik
           router.push("/sign-in");
           fallbackRedirecting = true;
@@ -151,7 +219,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     syncClerkSession();
   }, [clerkUser, isLoaded, pathname, router]);
 
-  const login = async (identifier: string) => {
+  const login = async (identifier: string, rememberMe?: boolean) => {
     // Fungsi simulasi manual lama
     const { data: dbUser, error } = await supabase
       .from('users')
@@ -179,9 +247,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
+    // Set expiration to 24 hours from now
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    const userWithExpiry = { ...user, expires_at: expiresAt };
+
     setCurrentUser(user);
     setIsProfileComplete(!!user.phone_number);
-    localStorage.setItem("daifukumoy_user", JSON.stringify(user));
+    
+    if (rememberMe) {
+      localStorage.setItem("daifukumoy_user", JSON.stringify(userWithExpiry));
+      sessionStorage.removeItem("daifukumoy_user");
+    } else {
+      sessionStorage.setItem("daifukumoy_user", JSON.stringify(userWithExpiry));
+      localStorage.removeItem("daifukumoy_user");
+    }
     
     const roleLower = user.role.toLowerCase();
     if (roleLower === "owner") router.push("/");
@@ -199,6 +278,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setCurrentUser(null);
     setIsProfileComplete(true);
     localStorage.removeItem("daifukumoy_user");
+    sessionStorage.removeItem("daifukumoy_user");
+    localStorage.removeItem("clerk_remember_me");
+    localStorage.removeItem("clerk_session_expires_at");
+    sessionStorage.removeItem("clerk_session_active");
     router.push("/sign-in");
   };
 
