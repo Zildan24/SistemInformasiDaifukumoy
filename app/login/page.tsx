@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useAuth, Role } from "../context/AuthContext";
 import { UserCircle, ShieldAlert, Store, User, Lock, LogIn } from "lucide-react";
+import { useSignIn, useClerk } from "@clerk/nextjs";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -10,8 +11,40 @@ export default function LoginPage() {
   const [loginInput, setLoginInput] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
 
+  const { loaded: isClerkLoaded } = useClerk();
+  const { signIn } = useSignIn();
+  const isLoaded = isClerkLoaded && signIn !== null;
+
   const handleLogin = (role: Role) => {
     login(role, rememberMe);
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!isLoaded) {
+      alert("Clerk belum siap. Silakan coba lagi.");
+      return;
+    }
+    try {
+      if (rememberMe) {
+        localStorage.setItem("clerk_remember_me_pending", "true");
+      } else {
+        localStorage.removeItem("clerk_remember_me_pending");
+        sessionStorage.setItem("clerk_session_active", "true");
+      }
+      
+      const { error } = await signIn.sso({
+        strategy: "oauth_google",
+        redirectUrl: "/",
+        redirectCallbackUrl: "/sso-callback",
+      });
+
+      if (error) {
+        alert(error.message || "Gagal login dengan Google.");
+      }
+    } catch (err: any) {
+      console.error("Google sign-in error:", err);
+      alert("Gagal login dengan Google.");
+    }
   };
 
   return (
@@ -144,7 +177,10 @@ export default function LoginPage() {
 
         {/* Google Login Footer */}
         <div className="mt-8 pt-6 border-t border-gray-50">
-          <button className="w-full flex items-center justify-center gap-3 py-3 border-2 border-gray-100 rounded-full font-bold text-gray-600 hover:bg-gray-50 transition-all">
+          <button 
+            onClick={handleGoogleSignIn}
+            className="w-full flex items-center justify-center gap-3 py-3 border-2 border-gray-100 rounded-full font-bold text-gray-600 hover:bg-gray-50 transition-all cursor-pointer"
+          >
             <LogIn size={18} className="text-pink-400" />
             Masuk dengan Google
           </button>

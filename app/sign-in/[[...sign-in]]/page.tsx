@@ -114,6 +114,7 @@ export default function SignInPage() {
         localStorage.setItem("clerk_remember_me_pending", "true");
       } else {
         localStorage.removeItem("clerk_remember_me_pending");
+        sessionStorage.setItem("clerk_session_active", "true");
       }
       
       const { error } = await signIn.sso({

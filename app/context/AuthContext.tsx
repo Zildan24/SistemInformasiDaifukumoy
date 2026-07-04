@@ -66,7 +66,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // If rememberMe was not checked, session expires when the browser/tab is closed.
           // We check sessionStorage for clerk_session_active.
           const isActive = sessionStorage.getItem("clerk_session_active") === "true";
-          if (!isActive) {
+          
+          // Jika user sedang berada di halaman login/auth/callback, ini adalah proses login aktif, tidak boleh di-signout
+          const isLoggingIn = ["/login", "/sign-in", "/sign-up", "/sso-callback"].some(path => 
+            pathname === path || pathname.startsWith(path + "/")
+          );
+          
+          if (!isActive && !isLoggingIn) {
             shouldSignOutClerk = true;
           }
         }
