@@ -584,298 +584,254 @@ function AdminDashboard() {
   } = useData();
 
   const todayStr = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
-  const sevenDaysAgo = useMemo(() => subDays(new Date(), 7), []);
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      maximumFractionDigits: 0
-    }).format(val);
+  // ── DATE FILTER STATE ──────────────────────────────────────────────────────
+  const allDates = useMemo(() => {
+    const year = 2026;
+    return eachDayOfInterval({ start: new Date(year, 0, 1), end: new Date(year, 11, 31) });
+  }, []);
+
+  const initialTodayIdx = useMemo(() => {
+    const idx = allDates.findIndex(d => isSameDay(d, new Date()));
+    return idx === -1 ? 0 : idx;
+  }, [allDates]);
+
+  const [sliderRange, setSliderRange] = useState<[number, number]>([initialTodayIdx, initialTodayIdx]);
+  const [dateFilter, setDateFilter] = useState<"today" | "7days" | "month" | "all" | "custom">("today");
+
+  const handleQuickFilter = (type: "today" | "7days" | "month" | "all") => {
+    setDateFilter(type);
+    const today = startOfDay(new Date());
+    let startIdx = 0;
+    if (type === "today") { startIdx = initialTodayIdx; }
+    else if (type === "7days") { startIdx = Math.max(0, initialTodayIdx - 6); }
+    else if (type === "month") {
+      const startOfM = startOfMonth(today);
+      startIdx = allDates.findIndex(d => isSameDay(d, startOfM));
+    }
+    if (startIdx === -1) startIdx = 0;
+    setSliderRange([startIdx, type === "all" ? allDates.length - 1 : initialTodayIdx]);
   };
 
-  // 1. CALCULATIONS: SCORECARDS & METRICS
-  const pendingPOs = useMemo(() => {
-    return preOrders.filter(po => po.status === "pesanan diterima");
-  }, [preOrders]);
-  
-  const pendingPOCount = useMemo(() => {
-    const groups = new Set();
-    pendingPOs.forEach(po => {
-      groups.add(`${po.resellerId}_${po.pickupDate}`);
-    });
-    return groups.size;
-  }, [pendingPOs]);
+  const filterStart = useMemo(() => startOfDay(allDates[sliderRange[0]]), [allDates, sliderRange]);
+  const filterEnd   = useMemo(() => endOfDay(allDates[sliderRange[1]]),   [allDates, sliderRange]);
 
-  const todayPOs = useMemo(() => {
-    return preOrders.filter(po => po.pickupDate === todayStr);
-  }, [preOrders, todayStr]);
+  const filterLabel = useMemo(() => {
+    if (dateFilter === "today")  return "Hari Ini";
+    if (dateFilter === "7days")  return "7 Hari Terakhir";
+    if (dateFilter === "month")  return "Bulan Ini";
+    if (dateFilter === "all")    return "Semua Data";
+    return `${format(filterStart, "dd MMM")} – ${format(filterEnd, "dd MMM")}`;
+  }, [dateFilter, filterStart, filterEnd]);
 
-  const todayPOQty = useMemo(() => {
-    return todayPOs.reduce((sum, po) => sum + po.quantity, 0);
-  }, [todayPOs]);
+  // ── FILTERED DATA ──────────────────────────────────────────────────────────
+  const filteredPOs = useMemo(() => preOrders.filter(po => {
+    const d = new Date(po.pickupDate);
+    return d >= filterStart && d <= filterEnd;
+  }), [preOrders, filterStart, filterEnd]);
 
-  const todayPORevenue = useMemo(() => {
-    return todayPOs.reduce((sum, po) => {
+  const filteredLogs = useMemo(() => productionLogs.filter(log => {
+    const d = new Date(log.date);
+    return d >= filterStart && d <= filterEnd;
+  }), [productionLogs, filterStart, filterEnd]);
+
+  const filteredTxs = useMemo(() => transactions.filter(t => {
+    const d = new Date(t.date);
+    return d >= filterStart && d <= filterEnd;
+  }), [transactions, filterStart, filterEnd]);
+
+  // ── SCORECARDS ─────────────────────────────────────────────────────────────
+  const pendingPOs = useMemo(() => filteredPOs.filter(po => po.status === "pesanan diterima"), [filteredPOs]);
+
+  const omset = useMemo(() => {
+    if (filteredLogs.length > 0) {
+      return filteredLogs.reduce((sum, log) => {
+        const p = products.find(prod => prod.id === log.productId);
+        return sum + log.soldQuantity * (log.priceSnapshot ?? (p?.price || 0));
+      }, 0);
+    }
+    return filteredPOs.reduce((sum, po) => {
       const p = products.find(prod => prod.id === po.productId);
       return sum + (p?.price || 0) * po.quantity;
     }, 0);
-  }, [todayPOs, products]);
+  }, [filteredLogs, filteredPOs, products]);
 
-  const todayLogs = useMemo(() => {
-    return productionLogs.filter(log => log.date === todayStr);
-  }, [productionLogs, todayStr]);
+  const soldQty = useMemo(() => {
+    if (filteredLogs.length > 0) return filteredLogs.reduce((s, l) => s + l.soldQuantity, 0);
+    return filteredPOs.reduce((s, po) => s + po.quantity, 0);
+  }, [filteredLogs, filteredPOs]);
 
-  const todayOmset = useMemo(() => {
-    if (todayLogs.length > 0) {
-      return todayLogs.reduce((sum, log) => {
+  const hppTotal = useMemo(() => {
+    if (filteredLogs.length > 0) {
+      return filteredLogs.reduce((sum, log) => {
         const p = products.find(prod => prod.id === log.productId);
-        const price = log.priceSnapshot ?? (p?.price || 0);
-        return sum + (log.soldQuantity * price);
+        return sum + log.soldQuantity * (log.hppSnapshot ?? (p?.hpp || 0));
       }, 0);
     }
-    return todayPORevenue;
-  }, [todayLogs, products, todayPORevenue]);
-
-  const todaySoldQty = useMemo(() => {
-    if (todayLogs.length > 0) {
-      return todayLogs.reduce((sum, log) => sum + log.soldQuantity, 0);
-    }
-    return todayPOQty;
-  }, [todayLogs, todayPOQty]);
-
-  const todayHpp = useMemo(() => {
-    if (todayLogs.length > 0) {
-      return todayLogs.reduce((sum, log) => {
-        const p = products.find(prod => prod.id === log.productId);
-        const hpp = log.hppSnapshot ?? (p?.hpp || 0);
-        return sum + (log.soldQuantity * hpp);
-      }, 0);
-    }
-    return todayPOs.reduce((sum, po) => {
+    return filteredPOs.reduce((sum, po) => {
       const p = products.find(prod => prod.id === po.productId);
       return sum + (p?.hpp || 0) * po.quantity;
     }, 0);
-  }, [todayLogs, todayPOs, products]);
+  }, [filteredLogs, filteredPOs, products]);
 
-  const todayExpenseAmount = useMemo(() => {
-    return transactions
-      .filter(t => t.type === "expense" && t.date.startsWith(todayStr))
-      .reduce((sum, t) => sum + t.amount, 0);
-  }, [transactions, todayStr]);
+  const wasteCost    = useMemo(() => filteredLogs.reduce((sum, log) => {
+    const p = products.find(prod => prod.id === log.productId);
+    return sum + (log.realWaste || 0) * (log.hppSnapshot ?? (p?.hpp || 0));
+  }, 0), [filteredLogs, products]);
 
-  const todayWasteCost = useMemo(() => {
-    return todayLogs.reduce((sum, log) => {
-      const p = products.find(prod => prod.id === log.productId);
-      const hpp = log.hppSnapshot ?? (p?.hpp || 0);
-      return sum + ((log.realWaste || 0) * hpp);
-    }, 0);
-  }, [todayLogs, products]);
+  const expenseAmount = useMemo(() => filteredTxs.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0), [filteredTxs]);
+  const netProfit     = useMemo(() => omset - hppTotal - expenseAmount - wasteCost, [omset, hppTotal, expenseAmount, wasteCost]);
 
-  const todayNetProfit = useMemo(() => {
-    return todayOmset - todayHpp - todayExpenseAmount - todayWasteCost;
-  }, [todayOmset, todayHpp, todayExpenseAmount, todayWasteCost]);
-
-  const criticalRawMaterials = useMemo(() => {
-    return rawMaterials.filter(rm => rm.currentStock <= rm.minStock);
-  }, [rawMaterials]);
+  const criticalRawMaterials      = useMemo(() => rawMaterials.filter(rm => rm.currentStock <= rm.minStock), [rawMaterials]);
   const criticalRawMaterialsCount = criticalRawMaterials.length;
 
-  // 3. CHARTS DATA PREPARATION
-  const weeklyPOChartData = useMemo(() => {
-    const data = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = subDays(new Date(), i);
-      const dateStr = format(date, "yyyy-MM-dd");
-      const dayPOs = preOrders.filter(po => po.pickupDate === dateStr);
-      const qty = dayPOs.reduce((sum, po) => sum + po.quantity, 0);
-      const revenue = dayPOs.reduce((sum, po) => {
-        const p = products.find(prod => prod.id === po.productId);
-        return sum + (p?.price || 0) * po.quantity;
-      }, 0);
-      data.push({
-        label: format(date, "dd MMM"),
-        qty,
-        revenue
+  // ── CHART DATA ─────────────────────────────────────────────────────────────
+  const poChartData = useMemo(() => {
+    const days = eachDayOfInterval({ start: filterStart, end: filterEnd });
+    if (days.length > 60) {
+      return eachMonthOfInterval({ start: filterStart, end: filterEnd }).map(month => {
+        const ms = startOfMonth(month); const me = endOfMonth(month);
+        const mPOs = filteredPOs.filter(po => isWithinInterval(new Date(po.pickupDate), { start: ms, end: me }));
+        return { label: format(month, "MMM"), qty: mPOs.reduce((s, po) => s + po.quantity, 0), revenue: mPOs.reduce((s, po) => { const p = products.find(prod => prod.id === po.productId); return s + (p?.price || 0) * po.quantity; }, 0) };
       });
     }
-    return data;
-  }, [preOrders, products]);
+    return days.map(day => {
+      const dayPOs = filteredPOs.filter(po => isSameDay(new Date(po.pickupDate), day));
+      return { label: format(day, "dd MMM"), qty: dayPOs.reduce((s, po) => s + po.quantity, 0), revenue: dayPOs.reduce((s, po) => { const p = products.find(prod => prod.id === po.productId); return s + (p?.price || 0) * po.quantity; }, 0) };
+    });
+  }, [filteredPOs, products, filterStart, filterEnd]);
 
   const cashflowChartData = useMemo(() => {
-    const data = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = subDays(new Date(), i);
-      const dateStr = format(date, "yyyy-MM-dd");
-      const dayIncomes = transactions.filter(
-        t => t.type === "income" && t.date.startsWith(dateStr)
-      );
-      const dayExpenses = transactions.filter(
-        t => t.type === "expense" && t.date.startsWith(dateStr)
-      );
-
-      data.push({
-        label: format(date, "dd MMM"),
-        pemasukan: dayIncomes.reduce((sum, t) => sum + t.amount, 0),
-        pengeluaran: dayExpenses.reduce((sum, t) => sum + t.amount, 0)
+    const days = eachDayOfInterval({ start: filterStart, end: filterEnd });
+    if (days.length > 60) {
+      return eachMonthOfInterval({ start: filterStart, end: filterEnd }).map(month => {
+        const ms = startOfMonth(month); const me = endOfMonth(month);
+        return { label: format(month, "MMM"), pemasukan: filteredTxs.filter(t => t.type === "income"  && isWithinInterval(new Date(t.date), { start: ms, end: me })).reduce((s, t) => s + t.amount, 0), pengeluaran: filteredTxs.filter(t => t.type === "expense" && isWithinInterval(new Date(t.date), { start: ms, end: me })).reduce((s, t) => s + t.amount, 0) };
       });
     }
-    return data;
-  }, [transactions]);
+    return days.map(day => {
+      const ds = format(day, "yyyy-MM-dd");
+      return { label: format(day, "dd MMM"), pemasukan: filteredTxs.filter(t => t.type === "income"  && t.date.startsWith(ds)).reduce((s, t) => s + t.amount, 0), pengeluaran: filteredTxs.filter(t => t.type === "expense" && t.date.startsWith(ds)).reduce((s, t) => s + t.amount, 0) };
+    });
+  }, [filteredTxs, filterStart, filterEnd]);
 
   const stockDistributionData = useMemo(() => {
     const totalGudang = stocks.reduce((sum, s) => sum + s.quantityActual, 0);
-    const totalStand = stockTransfers
-      .filter(t => t.date === todayStr)
-      .reduce((sum, t) => sum + t.quantity, 0);
+    const totalStand  = stockTransfers.filter(t => { const d = new Date(t.date); return d >= filterStart && d <= filterEnd; }).reduce((sum, t) => sum + t.quantity, 0);
+    return [{ name: "Gudang Pusat", value: totalGudang }, { name: "Stan/Reseller", value: totalStand }];
+  }, [stocks, stockTransfers, filterStart, filterEnd]);
 
-    return [
-      { name: "Gudang Pusat", value: totalGudang },
-      { name: "Stan/Reseller", value: totalStand }
-    ];
-  }, [stocks, stockTransfers, todayStr]);
-
-  const hasStockData = useMemo(() => {
-    return stockDistributionData.some(d => d.value > 0);
-  }, [stockDistributionData]);
+  const hasStockData = useMemo(() => stockDistributionData.some(d => d.value > 0), [stockDistributionData]);
 
   const topResellers = useMemo(() => {
     const salesMap: Record<string, { qty: number; revenue: number }> = {};
-    preOrders.forEach(po => {
-      const poDate = new Date(po.createdAt || po.pickupDate);
-      if (poDate >= sevenDaysAgo) {
-        const p = products.find(prod => prod.id === po.productId);
-        const subtotal = (p?.price || 0) * po.quantity;
-        if (!salesMap[po.resellerName]) {
-          salesMap[po.resellerName] = { qty: 0, revenue: 0 };
-        }
-        salesMap[po.resellerName].qty += po.quantity;
-        salesMap[po.resellerName].revenue += subtotal;
-      }
+    filteredPOs.forEach(po => {
+      const p = products.find(prod => prod.id === po.productId);
+      if (!salesMap[po.resellerName]) salesMap[po.resellerName] = { qty: 0, revenue: 0 };
+      salesMap[po.resellerName].qty     += po.quantity;
+      salesMap[po.resellerName].revenue += (p?.price || 0) * po.quantity;
     });
-    return Object.entries(salesMap)
-      .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 3);
-  }, [preOrders, products, sevenDaysAgo]);
+    return Object.entries(salesMap).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.revenue - a.revenue).slice(0, 3);
+  }, [filteredPOs, products]);
 
-  const latestPendingPOs = useMemo(() => {
-    return pendingPOs.slice(0, 5);
-  }, [pendingPOs]);
+  const latestPendingPOs = useMemo(() => pendingPOs.slice(0, 5), [pendingPOs]);
 
-  const pickupReminders = useMemo(() => {
-    return preOrders.filter(
-      po =>
-        po.pickupDate === todayStr &&
-        po.status !== "selesai" &&
-        po.status !== "siap diambil"
-    );
-  }, [preOrders, todayStr]);
+  const pickupReminders = useMemo(() => preOrders.filter(po => po.pickupDate === todayStr && po.status !== "selesai" && po.status !== "siap diambil"), [preOrders, todayStr]);
 
   const COLORS = ["#FF65C5", "#fbbf24", "#3b82f6", "#10b981", "#8b5cf6"];
 
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(val);
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
         <div>
           <h1 className="text-2xl font-black text-gray-800 tracking-tight flex items-center gap-2">
             <Activity className="text-primary" size={24} /> Pusat Komando Admin
           </h1>
-          <p className="text-xs text-gray-500 mt-0.5 font-inter">
-            Metrik operasional terpusat Daifukumoy Management System.
-          </p>
+          <p className="text-xs text-gray-500 mt-0.5 font-inter">Metrik operasional terpusat Daifukumoy Management System.</p>
         </div>
         <div className="flex items-center gap-2 bg-gray-50 px-3.5 py-1.5 rounded-2xl border border-gray-100 shrink-0">
           <Clock size={14} className="text-primary" />
-          <span className="text-xs font-bold text-gray-700 font-inter">
-            {format(new Date(), "EEEE, d MMMM yyyy", {})}
-          </span>
+          <span className="text-xs font-bold text-gray-700 font-inter">{format(new Date(), "EEEE, d MMMM yyyy", {})}</span>
         </div>
       </div>
 
-      {/* Scorecards - Top Row */}
+      {/* Date Filter Bar */}
+      <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+        <div className="flex flex-col xl:flex-row items-center gap-6 xl:gap-12">
+          <div className="flex items-center gap-2 text-gray-700 font-bold shrink-0 font-montserrat">
+            <Filter size={20} className="text-primary" />
+            <span className="text-sm">Filter Dashboard</span>
+            <span className="ml-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">{filterLabel}</span>
+          </div>
+
+          {/* Date Range Slider */}
+          <div className="flex-1 w-full px-2">
+            <div className="relative h-14 flex flex-col justify-center">
+              <div className="flex justify-between text-[10px] font-bold text-gray-400 mb-1 px-1 font-inter">
+                <span className="text-primary bg-primary/5 px-2 py-0.5 rounded border border-primary/10">{format(allDates[sliderRange[0]], "dd MMM yyyy")}</span>
+                <span className="text-primary bg-primary/5 px-2 py-0.5 rounded border border-primary/10">{format(allDates[sliderRange[1]], "dd MMM yyyy")}</span>
+              </div>
+              <Slider
+                range min={0} max={allDates.length - 1} value={sliderRange}
+                onChange={(val) => { setSliderRange(val as [number, number]); setDateFilter("custom"); }}
+                styles={{
+                  track: { backgroundColor: '#FF65C5', height: 6 },
+                  rail:  { backgroundColor: '#f3f4f6', height: 6 },
+                  handle: { width: 18, height: 18, marginTop: -6, backgroundColor: '#ffffff', border: '3px solid #FF65C5', opacity: 1, boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'pointer' }
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Quick Filters */}
+          <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-200 shrink-0 font-inter">
+            <button onClick={() => handleQuickFilter("today")} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dateFilter === "today" ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-800"}`}>Hari Ini</button>
+            <button onClick={() => handleQuickFilter("7days")} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dateFilter === "7days" ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-800"}`}>7 Hari</button>
+            <button onClick={() => handleQuickFilter("month")} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dateFilter === "month" ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-800"}`}>Bulan Ini</button>
+            <button onClick={() => handleQuickFilter("all")}   className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${dateFilter === "all"   ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-800"}`}>Semua</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Scorecards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 font-inter">
-        {/* Omset Hari Ini */}
         <div className="bg-white p-4.5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-3.5">
-          <div className="w-10 h-10 bg-green-50 text-green-500 rounded-2xl flex items-center justify-center shrink-0">
-            <DollarSign size={20} />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-montserrat">Omset Hari Ini</p>
-            <h3 className="text-lg font-black text-gray-800 mt-0.5 truncate">
-              {formatCurrency(todayOmset)}
-            </h3>
-            <p className="text-[9px] text-green-500 font-semibold mt-0.5">{todaySoldQty} pcs moci</p>
-          </div>
+          <div className="w-10 h-10 bg-green-50 text-green-500 rounded-2xl flex items-center justify-center shrink-0"><DollarSign size={20} /></div>
+          <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-montserrat">Omset</p><h3 className="text-lg font-black text-gray-800 mt-0.5 truncate">{formatCurrency(omset)}</h3><p className="text-[9px] text-green-500 font-semibold mt-0.5">{soldQty} pcs moci</p></div>
         </div>
-
-        {/* HPP Hari Ini */}
         <div className="bg-white p-4.5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-3.5">
-          <div className="w-10 h-10 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shrink-0">
-            <Package size={20} />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-montserrat">HPP Hari Ini</p>
-            <h3 className="text-lg font-black text-gray-800 mt-0.5 truncate">
-              {formatCurrency(todayHpp)}
-            </h3>
-            <p className="text-[9px] text-blue-500 font-semibold mt-0.5">Total modal produksi</p>
-          </div>
+          <div className="w-10 h-10 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shrink-0"><Package size={20} /></div>
+          <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-montserrat">HPP Modal</p><h3 className="text-lg font-black text-gray-800 mt-0.5 truncate">{formatCurrency(hppTotal)}</h3><p className="text-[9px] text-blue-500 font-semibold mt-0.5">Total modal produksi</p></div>
         </div>
-
-        {/* Pengeluaran Hari Ini */}
         <div className="bg-white p-4.5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-3.5">
-          <div className="w-10 h-10 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center shrink-0">
-            <CreditCard size={20} />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-montserrat">Pengeluaran Hari Ini</p>
-            <h3 className="text-lg font-black text-gray-800 mt-0.5 truncate">
-              {formatCurrency(todayExpenseAmount)}
-            </h3>
-            <p className="text-[9px] text-red-500 font-semibold mt-0.5">Operasional hari ini</p>
-          </div>
+          <div className="w-10 h-10 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center shrink-0"><CreditCard size={20} /></div>
+          <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-montserrat">Pengeluaran</p><h3 className="text-lg font-black text-gray-800 mt-0.5 truncate">{formatCurrency(expenseAmount)}</h3><p className="text-[9px] text-red-500 font-semibold mt-0.5">Operasional periode ini</p></div>
         </div>
-
-        {/* Laba Bersih Hari Ini */}
         <div className="bg-white p-4.5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-3.5">
-          <div className="w-10 h-10 bg-emerald-100/80 text-emerald-700 rounded-2xl flex items-center justify-center shrink-0">
-            <Wallet size={20} />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-montserrat">Laba Bersih Hari Ini</p>
-            <h3 className={`text-lg font-black mt-0.5 truncate ${todayNetProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>
-              {formatCurrency(todayNetProfit)}
-            </h3>
-            <p className="text-[9px] text-emerald-600 font-semibold mt-0.5">Omset - HPP - Pengeluaran</p>
-          </div>
+          <div className="w-10 h-10 bg-emerald-100/80 text-emerald-700 rounded-2xl flex items-center justify-center shrink-0"><Wallet size={20} /></div>
+          <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-montserrat">Laba Bersih</p><h3 className={`text-lg font-black mt-0.5 truncate ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>{formatCurrency(netProfit)}</h3><p className="text-[9px] text-emerald-600 font-semibold mt-0.5">Omset - HPP - Pengeluaran</p></div>
         </div>
-
-        {/* Critical Materials count */}
         <div className="bg-white p-4.5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-3.5">
-          <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center shrink-0">
-            <Utensils size={20} />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-montserrat">Bahan Kritis</p>
-            <h3 className="text-xl font-black text-gray-800 mt-0.5">{criticalRawMaterialsCount} Item</h3>
-            <p className="text-[9px] text-amber-500 font-semibold mt-0.5">Di bawah batas aman</p>
-          </div>
+          <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center shrink-0"><Utensils size={20} /></div>
+          <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-montserrat">Bahan Kritis</p><h3 className="text-xl font-black text-gray-800 mt-0.5">{criticalRawMaterialsCount} Item</h3><p className="text-[9px] text-amber-500 font-semibold mt-0.5">Di bawah batas aman</p></div>
         </div>
       </div>
 
-      {/* Row 2: 70:30 Ratio Grid (Line Chart & Pickup Logs) */}
+      {/* Row 2: PO Trend + Pickup Logs */}
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
-        {/* Left Column (70%): Line Chart */}
         <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 lg:col-span-7 space-y-4">
           <div>
             <h3 className="text-base font-bold text-gray-800 font-montserrat">Tren Penjualan Pre-Order</h3>
-            <p className="text-xs text-gray-400 font-inter">Total kuantitas penjemputan PO reseller dalam 7 hari terakhir</p>
+            <p className="text-xs text-gray-400 font-inter">Total kuantitas PO reseller pada periode yang dipilih</p>
           </div>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weeklyPOChartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+              <AreaChart data={poChartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#FF65C5" stopOpacity={0.15} />
@@ -885,79 +841,50 @@ function AdminDashboard() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                 <XAxis dataKey="label" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
                 <YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
-                <RechartsTooltip
-                  contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05)" }}
-                  formatter={(value: any, name?: string | number) => {
-                    if (name === "revenue") return [formatCurrency(value), "Nominal"];
-                    return [value + " pcs", "Kuantitas"];
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="qty"
-                  name="qty"
-                  stroke="#FF65C5"
-                  strokeWidth={2.5}
-                  fillOpacity={1}
-                  fill="url(#colorRevenue)"
-                />
+                <RechartsTooltip contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05)" }}
+                  formatter={(value: any, name?: string | number) => name === "revenue" ? [formatCurrency(value), "Nominal"] : [value + " pcs", "Kuantitas"]} />
+                <Area type="monotone" dataKey="qty" name="qty" stroke="#FF65C5" strokeWidth={2.5} fillOpacity={1} fill="url(#colorRevenue)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Right Column (30%): Live Pickup Logs */}
         <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 lg:col-span-3 flex flex-col h-full space-y-4">
           <div>
             <h3 className="text-base font-bold text-gray-800 font-montserrat">Jadwal Penjemputan PO</h3>
             <p className="text-xs text-gray-400 font-inter">Live Pickup Logs hari ini</p>
           </div>
           <div className="flex-1 space-y-2.5 overflow-y-auto pr-1 max-h-[280px] font-inter">
-            {pickupReminders.length > 0 ? (
-              pickupReminders.map(po => {
-                const product = products.find(p => p.id === po.productId);
-                return (
-                  <div key={po.id} className="flex justify-between items-center bg-yellow-50/40 p-2.5 rounded-2xl border border-yellow-100/70">
-                    <div className="min-w-0 flex-1 pr-2">
-                      <p className="font-bold text-gray-800 text-[11px] truncate">{po.resellerName}</p>
-                      <p className="text-[10px] text-gray-500 truncate">
-                        {product?.name.replace("Daifuku ", "")} ({po.quantity} pcs)
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="bg-yellow-100/70 text-yellow-800 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
-                        {po.status === "pesanan diterima" ? "Diterima" : "Dapur"}
-                      </span>
-                      {po.resellerPhone && (
-                        <a
-                          href={`https://wa.me/${po.resellerPhone.replace(/\D/g, "").replace(/^0/, "62")}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-6 h-6 rounded-lg bg-green-50 flex items-center justify-center text-green-600 hover:bg-green-100 transition-colors"
-                        >
-                          <Phone size={12} fill="currentColor" strokeWidth={0} />
-                        </a>
-                      )}
-                    </div>
+            {pickupReminders.length > 0 ? pickupReminders.map(po => {
+              const product = products.find(p => p.id === po.productId);
+              return (
+                <div key={po.id} className="flex justify-between items-center bg-yellow-50/40 p-2.5 rounded-2xl border border-yellow-100/70">
+                  <div className="min-w-0 flex-1 pr-2">
+                    <p className="font-bold text-gray-800 text-[11px] truncate">{po.resellerName}</p>
+                    <p className="text-[10px] text-gray-500 truncate">{product?.name.replace("Daifuku ", "")} ({po.quantity} pcs)</p>
                   </div>
-                );
-              })
-            ) : (
-              <div className="text-center py-12 text-xs text-gray-400 font-medium">
-                Tidak ada jadwal penjemputan tersisa untuk hari ini.
-              </div>
-            )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="bg-yellow-100/70 text-yellow-800 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">{po.status === "pesanan diterima" ? "Diterima" : "Dapur"}</span>
+                    {po.resellerPhone && (
+                      <a href={`https://wa.me/${po.resellerPhone.replace(/\D/g, "").replace(/^0/, "62")}`} target="_blank" rel="noopener noreferrer"
+                        className="w-6 h-6 rounded-lg bg-green-50 flex items-center justify-center text-green-600 hover:bg-green-100 transition-colors">
+                        <Phone size={12} fill="currentColor" strokeWidth={0} />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            }) : <div className="text-center py-12 text-xs text-gray-400 font-medium">Tidak ada jadwal penjemputan tersisa untuk hari ini.</div>}
           </div>
         </div>
       </div>
 
-      {/* Row 3: Bottom Grid (Cashflow, Donut, Resellers) */}
+      {/* Row 3: Cashflow + Donut + Top Resellers */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Weekly Cashflow Bar Chart */}
         <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 space-y-4">
           <div>
-            <h3 className="text-base font-bold text-gray-800 font-montserrat">Arus Kas Harian (Mingguan)</h3>
-            <p className="text-xs text-gray-400 font-inter">Pemasukan vs Pengeluaran finansial harian</p>
+            <h3 className="text-base font-bold text-gray-800 font-montserrat">Arus Kas Harian</h3>
+            <p className="text-xs text-gray-400 font-inter">Pemasukan vs Pengeluaran finansial periode ini</p>
           </div>
           <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -965,19 +892,15 @@ function AdminDashboard() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                 <XAxis dataKey="label" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
                 <YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `Rp${val / 1000}k`} />
-                <RechartsTooltip
-                  contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05)" }}
-                  formatter={(val: any) => formatCurrency(val)}
-                />
+                <RechartsTooltip contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05)" }} formatter={(val: any) => formatCurrency(val)} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontFamily: 'Inter' }} />
-                <Bar dataKey="pemasukan" name="Pemasukan" fill="#10b981" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="pemasukan"  name="Pemasukan"  fill="#10b981" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="pengeluaran" name="Pengeluaran" fill="#FF65C5" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Global Stock Donut Chart */}
         <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 space-y-4">
           <div>
             <h3 className="text-base font-bold text-gray-800 font-montserrat">Distribusi Stok Global</h3>
@@ -987,110 +910,59 @@ function AdminDashboard() {
             {hasStockData ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie
-                    data={stockDistributionData}
-                    cx="50%"
-                    cy="45%"
-                    innerRadius={45}
-                    outerRadius={65}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {stockDistributionData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
+                  <Pie data={stockDistributionData} cx="50%" cy="45%" innerRadius={45} outerRadius={65} paddingAngle={3} dataKey="value">
+                    {stockDistributionData.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}
                   </Pie>
                   <RechartsTooltip formatter={(value: any) => `${value} pcs`} />
                   <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: "10px", fontFamily: 'Inter' }} />
                 </PieChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="text-center text-xs text-gray-400 font-inter">
-                Belum ada data distribusi stok gudang / kirim cabang hari ini.
-              </div>
-            )}
+            ) : <div className="text-center text-xs text-gray-400 font-inter">Belum ada data distribusi stok.</div>}
           </div>
         </div>
 
-        {/* Top Resellers Card */}
-        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 space-y-4 flex flex-col justify-between">
-          <div className="space-y-3">
-            <div>
-              <h3 className="text-base font-bold text-gray-800 font-montserrat">Top 3 Reseller/Stan</h3>
-              <p className="text-xs text-gray-400 font-inter">Kanal paling aktif 7 hari terakhir</p>
-            </div>
-            <div className="space-y-2.5 font-inter">
-              {topResellers.length > 0 ? (
-                topResellers.map((reseller, idx) => (
-                  <div key={idx} className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-2xl border border-gray-100">
-                    <div className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                      idx === 0 ? "bg-amber-100 text-amber-700" : idx === 1 ? "bg-slate-100 text-slate-700" : "bg-orange-100 text-orange-700"
-                    }`}>
-                      {idx + 1}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-gray-800 text-[11px] truncate">{reseller.name}</p>
-                      <p className="text-[9px] text-gray-400">{reseller.qty} pcs terjual</p>
-                    </div>
-                    <span className="font-black text-[11px] text-primary shrink-0">{formatCurrency(reseller.revenue)}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8 text-xs text-gray-400">
-                  Tidak ada data penjualan.
-                </div>
-              )}
-            </div>
+        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 space-y-4 flex flex-col">
+          <div>
+            <h3 className="text-base font-bold text-gray-800 font-montserrat">Top 3 Reseller/Stan</h3>
+            <p className="text-xs text-gray-400 font-inter">Kanal paling aktif pada periode ini</p>
+          </div>
+          <div className="space-y-2.5 font-inter">
+            {topResellers.length > 0 ? topResellers.map((reseller, idx) => (
+              <div key={idx} className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-2xl border border-gray-100">
+                <div className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${idx === 0 ? "bg-amber-100 text-amber-700" : idx === 1 ? "bg-slate-100 text-slate-700" : "bg-orange-100 text-orange-700"}`}>{idx + 1}</div>
+                <div className="min-w-0 flex-1"><p className="font-bold text-gray-800 text-[11px] truncate">{reseller.name}</p><p className="text-[9px] text-gray-400">{reseller.qty} pcs terjual</p></div>
+                <span className="font-black text-[11px] text-primary shrink-0">{formatCurrency(reseller.revenue)}</span>
+              </div>
+            )) : <div className="text-center py-8 text-xs text-gray-400">Tidak ada data penjualan pada periode ini.</div>}
           </div>
         </div>
       </div>
 
-      {/* Row 4: Bottom Table (Pending PO Queue) */}
+      {/* Row 4: Pending PO Queue */}
       <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-gray-800 font-montserrat">Antrean PO Terbaru</h3>
-            <p className="text-xs text-gray-400 font-inter">5 pre-order masuk terbaru yang perlu diproses</p>
+            <p className="text-xs text-gray-400 font-inter">5 pre-order masuk terbaru yang perlu diproses pada periode ini</p>
           </div>
-          <Link
-            href="/approval"
-            className="text-xs font-bold text-primary hover:underline flex items-center gap-1 bg-primary/5 px-2.5 py-1.5 rounded-xl border border-primary/10 font-inter"
-          >
-            Kelola Status <ChevronRight size={12} />
-          </Link>
+          <Link href="/approval" className="text-xs font-bold text-primary hover:underline flex items-center gap-1 bg-primary/5 px-2.5 py-1.5 rounded-xl border border-primary/10 font-inter">Kelola Status <ChevronRight size={12} /></Link>
         </div>
-
         <div className="space-y-2.5 font-inter">
-          {latestPendingPOs.length > 0 ? (
-            latestPendingPOs.map((po) => {
-              const product = products.find(p => p.id === po.productId);
-              return (
-                <div key={po.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-gray-400 border border-gray-100 shrink-0">
-                      <ShoppingBag size={15} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-gray-800 text-[11px] truncate">{po.resellerName}</p>
-                      <p className="text-[9px] text-gray-500 truncate">
-                        {product?.name} | {po.quantity} pcs
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-black text-[11px] text-gray-700">
-                      {formatCurrency((product?.price || 0) * po.quantity)}
-                    </p>
-                    <p className="text-[9px] text-gray-400">Ambil: {po.pickupDate}</p>
-                  </div>
+          {latestPendingPOs.length > 0 ? latestPendingPOs.map((po) => {
+            const product = products.find(p => p.id === po.productId);
+            return (
+              <div key={po.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-gray-400 border border-gray-100 shrink-0"><ShoppingBag size={15} /></div>
+                  <div className="min-w-0"><p className="font-bold text-gray-800 text-[11px] truncate">{po.resellerName}</p><p className="text-[9px] text-gray-500 truncate">{product?.name} | {po.quantity} pcs</p></div>
                 </div>
-              );
-            })
-          ) : (
-            <div className="text-center py-6 text-xs text-gray-400">
-              Tidak ada pesanan masuk dalam antrean.
-            </div>
-          )}
+                <div className="text-right shrink-0">
+                  <p className="font-black text-[11px] text-gray-700">{formatCurrency((product?.price || 0) * po.quantity)}</p>
+                  <p className="text-[9px] text-gray-400">Ambil: {po.pickupDate}</p>
+                </div>
+              </div>
+            );
+          }) : <div className="text-center py-6 text-xs text-gray-400">Tidak ada pesanan masuk dalam antrean pada periode ini.</div>}
         </div>
       </div>
     </div>

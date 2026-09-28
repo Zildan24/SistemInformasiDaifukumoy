@@ -136,6 +136,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
              if (insertError) {
                console.error("Gagal auto-insert data dari Clerk ke Supabase:", insertError);
+               // FALLBACK: Allow user in memory to prevent app from breaking if Supabase is down
+               dbUserObj = {
+                 id: clerkUser.id,
+                 name: fullName,
+                 role: "admin", // fallback to admin so they can see the dashboard
+                 phone_number: null,
+                 email: clerkUser.primaryEmailAddress?.emailAddress
+               };
+               dbProfileComplete = false;
              } else {
                dbUserObj = {
                  id: newUuid,

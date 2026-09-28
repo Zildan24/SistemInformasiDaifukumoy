@@ -10,16 +10,21 @@ export default function SignInPage() {
   const { signIn, errors: clerkErrors, fetchStatus } = useSignIn();
   const router = useRouter();
 
-  const [step, setStep] = useState(1); // 1: Email/Username, 2: Password
+  // step: 1 = Email/Username, 2 = Password, 3 = MFA/Second Factor
+  const [step, setStep] = useState(1);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  
+
   const [cooldown, setCooldown] = useState(0);
+
+  // MFA state
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaStrategy, setMfaStrategy] = useState<"totp" | "phone_code" | "email_code">("totp");
 
   const isLoaded = isClerkLoaded && signIn !== null;
 
@@ -39,6 +44,31 @@ export default function SignInPage() {
     setStep(2);
   };
 
+  const finalizeSignIn = async () => {
+    if (rememberMe) {
+      localStorage.setItem("clerk_remember_me", "true");
+      localStorage.setItem(
+        "clerk_session_expires_at",
+        (Date.now() + 24 * 60 * 60 * 1000).toString()
+      );
+    } else {
+      localStorage.removeItem("clerk_remember_me");
+      localStorage.removeItem("clerk_session_expires_at");
+      sessionStorage.setItem("clerk_session_active", "true");
+    }
+
+    await signIn!.finalize({
+      navigate: ({ decorateUrl }) => {
+        const url = decorateUrl("/");
+        if (url.startsWith("http")) {
+          window.location.href = url;
+        } else {
+          router.push(url);
+        }
+      },
+    });
+  };
+
   const handleStep2Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isLoaded || cooldown > 0) return;
@@ -47,42 +77,79 @@ export default function SignInPage() {
     setErrorMsg("");
 
     try {
-      const { error } = await signIn.password({
+      const result = await signIn!.password({
         identifier: email,
         password,
       });
 
-      if (error) {
-        setErrorMsg(error.message || "Gagal melakukan sign in. Silakan coba lagi.");
-        return;
-      }
+      // @ts-ignore — result shape from Clerk
+      const status = result?.status ?? signIn!.status;
 
-      if (signIn.status === "complete") {
-        if (rememberMe) {
-          localStorage.setItem("clerk_remember_me", "true");
-          localStorage.setItem("clerk_session_expires_at", (Date.now() + 24 * 60 * 60 * 1000).toString());
-        } else {
-          localStorage.removeItem("clerk_remember_me");
-          localStorage.removeItem("clerk_session_expires_at");
-          sessionStorage.setItem("clerk_session_active", "true");
+      if (status === "complete") {
+        await finalizeSignIn();
+      } else if (status === "needs_second_factor") {
+        // Determine which MFA strategy is available
+        const supportedStrategies = signIn!.supportedSecondFactors ?? [];
+        const totp = supportedStrategies.find((f: any) => f.strategy === "totp");
+        const phone = supportedStrategies.find((f: any) => f.strategy === "phone_code");
+        const emailCode = supportedStrategies.find((f: any) => f.strategy === "email_code");
+
+        if (totp) {
+          setMfaStrategy("totp");
+        } else if (phone) {
+          setMfaStrategy("phone_code");
+          // Trigger OTP delivery
+          await signIn!.prepareSecondFactor({ strategy: "phone_code" });
+        } else if (emailCode) {
+          setMfaStrategy("email_code");
+          await signIn!.prepareSecondFactor({ strategy: "email_code" });
         }
 
-        await signIn.finalize({
-          navigate: ({ session, decorateUrl }) => {
-            const url = decorateUrl("/");
-            if (url.startsWith("http")) {
-              window.location.href = url;
-            } else {
-              router.push(url);
-            }
-          },
-        });
+        setStep(3);
       } else {
-        setErrorMsg("Status sign in tidak lengkap: " + signIn.status);
+        setErrorMsg("Status sign in tidak dikenal: " + status);
       }
     } catch (err: any) {
       console.error("Clerk sign-in error:", err);
-      setErrorMsg("Gagal melakukan sign in. Silakan coba lagi.");
+      const message =
+        err?.errors?.[0]?.message ||
+        err?.errors?.[0]?.longMessage ||
+        "Gagal melakukan sign in. Silakan coba lagi.";
+      setErrorMsg(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMfaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isLoaded || !mfaCode || cooldown > 0) return;
+
+    setIsLoading(true);
+    setErrorMsg("");
+
+    try {
+      const result = await signIn!.attemptSecondFactor({
+        strategy: mfaStrategy,
+        code: mfaCode,
+      });
+
+      // @ts-ignore
+      const status = result?.status ?? signIn!.status;
+
+      if (status === "complete") {
+        await finalizeSignIn();
+      } else {
+        setErrorMsg("Verifikasi gagal. Status: " + status);
+      }
+    } catch (err: any) {
+      console.error("MFA error:", err);
+      const message =
+        err?.errors?.[0]?.message ||
+        err?.errors?.[0]?.longMessage ||
+        "Kode verifikasi salah atau sudah kadaluarsa.";
+      setErrorMsg(message);
+      setMfaCode("");
     } finally {
       setIsLoading(false);
     }
@@ -91,15 +158,16 @@ export default function SignInPage() {
   // Watch clerkErrors for rate limiting
   useEffect(() => {
     if (clerkErrors?.raw && Array.isArray(clerkErrors.raw)) {
-      const isRateLimit = clerkErrors.raw.some((e: any) => 
-        e.code === "rate_limit_exceeded" || 
-        e.message?.toLowerCase().includes("too many requests") ||
-        e.longMessage?.toLowerCase().includes("too many requests")
+      const isRateLimit = clerkErrors.raw.some(
+        (e: any) =>
+          e.code === "rate_limit_exceeded" ||
+          e.message?.toLowerCase().includes("too many requests") ||
+          e.longMessage?.toLowerCase().includes("too many requests")
       );
       if (isRateLimit) {
         setCooldown(60);
       }
-      
+
       const firstErr = clerkErrors.raw[0] as any;
       if (firstErr) {
         setErrorMsg(firstErr.message || firstErr.longMessage || "Gagal melakukan sign in.");
@@ -116,8 +184,8 @@ export default function SignInPage() {
         localStorage.removeItem("clerk_remember_me_pending");
         sessionStorage.setItem("clerk_session_active", "true");
       }
-      
-      const { error } = await signIn.sso({
+
+      const { error } = await signIn!.sso({
         strategy: "oauth_google",
         redirectUrl: "/",
         redirectCallbackUrl: "/sso-callback",
@@ -133,30 +201,38 @@ export default function SignInPage() {
   };
 
   return (
-    <div 
+    <div
       className="min-h-screen flex items-center justify-center p-4 font-sans overflow-hidden relative bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('/bglogin.png')" }}
     >
       <div className="absolute inset-0 bg-white/40 backdrop-blur-sm z-0"></div>
-      
+
       {/* --- Main Sign In Card --- */}
       <div className="w-full max-w-[400px] bg-white rounded-[24px] shadow-[0_8px_40px_rgba(0,0,0,0.08)] p-10 flex flex-col relative z-10 animate-in fade-in zoom-in-95 duration-500">
-        
+
         {/* Header Section */}
         <div className="flex flex-col items-center mb-6">
           <img src="/logo.png" alt="Daifukumoy Logo" className="w-12 h-12 object-contain mb-4" />
           <h1 className="text-[1.25rem] font-bold text-[#111827] mb-1.5 text-center leading-snug">
-            {step === 1 ? "Sign in" : "Enter your password"}
+            {step === 1 ? "Sign in" : step === 2 ? "Enter your password" : "Verifikasi 2 Langkah"}
           </h1>
           <p className="text-[0.875rem] text-[#6B7280] text-center leading-snug">
-            {step === 1 ? "to continue to Daifukumoy" : "Enter the password associated with your account"}
+            {step === 1
+              ? "to continue to Daifukumoy"
+              : step === 2
+              ? "Enter the password associated with your account"
+              : mfaStrategy === "totp"
+              ? "Masukkan kode dari aplikasi authenticator kamu"
+              : mfaStrategy === "phone_code"
+              ? "Masukkan kode OTP yang dikirim ke nomor HP kamu"
+              : "Masukkan kode OTP yang dikirim ke email kamu"}
           </p>
         </div>
 
-        {/* User Badge for Step 2 */}
-        {step === 2 && (
-          <div 
-            onClick={() => setStep(1)}
+        {/* User Badge for Step 2 & 3 */}
+        {(step === 2 || step === 3) && (
+          <div
+            onClick={() => { setStep(1); setErrorMsg(""); }}
             className="inline-flex items-center gap-1.5 bg-[#F3F4F6] hover:bg-[#E5E7EB] px-3 py-1.5 rounded-full text-xs font-semibold text-[#374151] mx-auto mb-6 transition-colors cursor-pointer group border border-gray-100"
           >
             <span>{email}</span>
@@ -176,10 +252,11 @@ export default function SignInPage() {
           </div>
         )}
 
-        {step === 1 ? (
+        {/* ─── STEP 1: Email/Username ─── */}
+        {step === 1 && (
           <form onSubmit={handleStep1Submit} className="flex flex-col">
             {/* Google SSO Button */}
-            <button 
+            <button
               type="button"
               onClick={handleGoogleSignIn}
               className="w-full flex items-center justify-center gap-2.5 py-2 px-4 border border-[#E5E7EB] rounded-md font-medium text-sm text-[#374151] hover:bg-gray-50 transition-all cursor-pointer mb-6"
@@ -205,7 +282,7 @@ export default function SignInPage() {
               <label className="text-[0.8125rem] font-semibold text-[#111827]">
                 Email address or username
               </label>
-              <input 
+              <input
                 type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -217,7 +294,7 @@ export default function SignInPage() {
 
             {/* Remember Me Checkbox */}
             <div className="flex items-center gap-2 mb-6">
-              <input 
+              <input
                 type="checkbox"
                 id="rememberMe"
                 checked={rememberMe}
@@ -230,12 +307,12 @@ export default function SignInPage() {
             </div>
 
             {/* Continue Button */}
-            <button 
+            <button
               type="submit"
-              disabled={isLoading || fetchStatus === "fetching" || cooldown > 0}
+              disabled={isLoading || cooldown > 0}
               className={`w-full h-10 text-white rounded-md font-semibold text-sm transition-colors cursor-pointer flex items-center justify-center gap-1 ${
-                cooldown > 0 
-                  ? "bg-gray-400 cursor-not-allowed" 
+                cooldown > 0
+                  ? "bg-gray-400 cursor-not-allowed"
                   : "bg-[#ff65c5] hover:bg-[#e04fa7] active:bg-[#c93f92]"
               }`}
             >
@@ -247,7 +324,10 @@ export default function SignInPage() {
               No account? <Link href="/sign-up" className="text-[#ff65c5] hover:underline font-medium">Sign up</Link>
             </div>
           </form>
-        ) : (
+        )}
+
+        {/* ─── STEP 2: Password ─── */}
+        {step === 2 && (
           <form onSubmit={handleStep2Submit} className="flex flex-col">
             {/* Password Input */}
             <div className="flex flex-col gap-1.5 mb-4">
@@ -260,11 +340,12 @@ export default function SignInPage() {
                 </a>
               </div>
               <div className="relative">
-                <input 
+                <input
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  autoFocus
                   className="w-full h-10 border border-[#D1D5DB] rounded-md pl-3 pr-10 text-sm focus:outline-none focus:border-[#ff65c5] transition-colors font-medium text-gray-700"
                   placeholder="Enter your password"
                 />
@@ -289,7 +370,7 @@ export default function SignInPage() {
 
             {/* Remember Me Checkbox */}
             <div className="flex items-center gap-2 mb-6">
-              <input 
+              <input
                 type="checkbox"
                 id="rememberMe2"
                 checked={rememberMe}
@@ -302,23 +383,28 @@ export default function SignInPage() {
             </div>
 
             {/* Continue Button */}
-            <button 
+            <button
               type="submit"
               disabled={isLoading || fetchStatus === "fetching" || cooldown > 0}
               className={`w-full h-10 text-white rounded-md font-semibold text-sm transition-colors cursor-pointer flex items-center justify-center gap-1 ${
-                cooldown > 0 
-                  ? "bg-gray-400 cursor-not-allowed" 
+                cooldown > 0
+                  ? "bg-gray-400 cursor-not-allowed"
                   : "bg-[#ff65c5] hover:bg-[#e04fa7] active:bg-[#c93f92]"
               }`}
             >
-              {cooldown > 0 ? `Try again in ${cooldown}s` : "Continue ▸"}
+              {isLoading ? (
+                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : cooldown > 0 ? `Try again in ${cooldown}s` : "Continue ▸"}
             </button>
 
             {/* Back Link */}
             <div className="mt-6 text-center text-xs text-gray-500">
-              <button 
+              <button
                 type="button"
-                onClick={() => setStep(1)}
+                onClick={() => { setStep(1); setErrorMsg(""); }}
                 className="text-[#ff65c5] hover:underline font-medium cursor-pointer"
               >
                 Use another method
@@ -327,10 +413,74 @@ export default function SignInPage() {
           </form>
         )}
 
+        {/* ─── STEP 3: MFA / Second Factor ─── */}
+        {step === 3 && (
+          <form onSubmit={handleMfaSubmit} className="flex flex-col">
+            {/* MFA icon */}
+            <div className="flex justify-center mb-5">
+              <div className="w-14 h-14 bg-pink-50 rounded-full flex items-center justify-center">
+                <svg className="w-7 h-7 text-[#ff65c5]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+            </div>
 
+            {/* OTP Code Input */}
+            <div className="flex flex-col gap-1.5 mb-6">
+              <label className="text-[0.8125rem] font-semibold text-[#111827]">
+                {mfaStrategy === "totp" ? "Kode Authenticator" : "Kode OTP"}
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
+                required
+                autoFocus
+                className="w-full h-12 border border-[#D1D5DB] rounded-md px-3 text-center text-xl tracking-[0.5em] font-bold focus:outline-none focus:border-[#ff65c5] transition-colors text-gray-800"
+                placeholder="000000"
+              />
+              <p className="text-[0.75rem] text-[#9CA3AF] text-center mt-1">
+                {mfaStrategy === "totp"
+                  ? "Buka aplikasi authenticator (Google Authenticator / Authy) dan masukkan kode 6 digit."
+                  : "Masukkan kode 6 digit yang telah dikirimkan."}
+              </p>
+            </div>
+
+            {/* Verify Button */}
+            <button
+              type="submit"
+              disabled={isLoading || mfaCode.length < 6 || cooldown > 0}
+              className={`w-full h-10 text-white rounded-md font-semibold text-sm transition-colors cursor-pointer flex items-center justify-center gap-1 ${
+                isLoading || mfaCode.length < 6
+                  ? "bg-gray-300 cursor-not-allowed"
+                  : "bg-[#ff65c5] hover:bg-[#e04fa7] active:bg-[#c93f92]"
+              }`}
+            >
+              {isLoading ? (
+                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : "Verifikasi ▸"}
+            </button>
+
+            {/* Back Link */}
+            <div className="mt-6 text-center text-xs text-gray-500">
+              <button
+                type="button"
+                onClick={() => { setStep(2); setErrorMsg(""); setMfaCode(""); }}
+                className="text-[#ff65c5] hover:underline font-medium cursor-pointer"
+              >
+                ← Kembali
+              </button>
+            </div>
+          </form>
+        )}
 
       </div>
-
     </div>
   );
 }
